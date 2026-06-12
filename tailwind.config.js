@@ -1,0 +1,71 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        'nord-dark': '#2E3440',
+        'nord-blue': '#3B4252',
+        'nord-ice': '#88C0D0',
+        'nord-sand': '#EBCB8B',
+        'nord-snow': '#ECEFF4',
+      },
+    },
+  },
+  plugins: [require('daisyui')],
+  daisyui: {
+    themes: [
+      {
+        nord: {
+          "primary": "#88C0D0",
+          "primary-content": "#2E3440",
+          "secondary": "#EBCB8B",
+          "secondary-content": "#2E3440",
+          "accent": "#5E81AC",
+          "accent-content": "#ECEFF4",
+          "neutral": "#3B4252",
+          "neutral-content": "#ECEFF4",
+          "base-100": "#2E3440",
+          "base-200": "#3B4252",
+          "base-300": "#434C5E",
+          "base-content": "#ECEFF4",
+          "info": "#88C0D0",
+          "info-content": "#2E3440",
+          "success": "#A3BE8C",
+          "success-content": "#2E3440",
+          "warning": "#EBCB8B",
+          "warning-content": "#2E3440",
+          "error": "#BF616A",
+          "error-content": "#2E3440",
+        },
+      },
+      {
+        "nord-light": {
+          "primary": "#88C0D0",
+          "primary-content": "#2E3440",
+          "secondary": "#EBCB8B",
+          "secondary-content": "#2E3440",
+          "accent": "#5E81AC",
+          "accent-content": "#ECEFF4",
+          "neutral": "#D8DEE9",
+          "neutral-content": "#2E3440",
+          "base-100": "#ECEFF4",
+          "base-200": "#E5E9F0",
+          "base-300": "#D8DEE9",
+          "base-content": "#2E3440",
+          "info": "#88C0D0",
+          "info-content": "#2E3440",
+          "success": "#A3BE8C",
+          "success-content": "#2E3440",
+          "warning": "#EBCB8B",
+          "warning-content": "#2E3440",
+          "error": "#BF616A",
+          "error-content": "#ECEFF4",
+        },
+      },
+    ],
+  },
+}
