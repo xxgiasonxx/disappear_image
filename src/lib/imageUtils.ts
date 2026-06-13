@@ -160,3 +160,4 @@ export function validateImageFile(file: File): string | null {
 
   return null;
 }
+
