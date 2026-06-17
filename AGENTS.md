@@ -501,14 +501,18 @@ const sanitizedInput = escapeHtml(userInput);
 ```
 src/
 ├── components/          # React 元件
-│   ├── ImageUploader/   # 圖片上傳元件
-│   ├── PixelBackground/ # 像素背景元件
 │   ├── Navigation/      # 導航元件
 │   └── FloatingButtons/ # 主題切換 + 回到頂部
 ├── lib/                 # 演算法核心函式庫
 │   ├── types.ts         # 類型定義與常數
 │   ├── interpolation.ts # 插值演算法 (kernel functions)
-│   └── steganography.ts # 隱寫術演算法
+│   ├── steganography.ts # 隱寫術演算法
+│   ├── xProcessor.ts    # X 平台圖片處理
+│   ├── bruteForce.ts    # 暴力搜尋法
+│   ├── analytical.ts    # 解析法
+│   ├── imageUtils.ts    # 影像工具函式
+│   ├── bruteForceXProcessor.ts
+│   └── animatedXProcessor.ts
 ├── pages/               # 頁面元件
 │   ├── Comparison.tsx
 │   ├── AlgorithmDemo.tsx
@@ -516,6 +520,9 @@ src/
 │   └── Playground.tsx
 ├── workers/             # Web Workers (圖片處理)
 │   └── imageProcessor.worker.ts
+├── hooks/               # React hooks
+│   ├── useXProcessor.ts
+│   └── useBruteForceProcessor.ts
 ├── utils/               # 工具函式
 │   └── validation.ts    # 輸入驗證
 └── App.tsx
@@ -533,13 +540,13 @@ src/
 | `@pages/*` | `src/pages/*` | `@pages/Comparison` → `src/pages/Comparison` |
 | `@utils/*` | `src/utils/*` | `@utils/validation` → `src/utils/validation` |
 | `@workers/*` | `src/workers/*` | `@workers/imageProcessor` → `src/workers/imageProcessor` |
-| `@test/*` | `test/*` | `@test/lib/interpolation` → `test/lib/interpolation` |
+| `@hooks/*` | `src/hooks/*` | `@hooks/useXProcessor` → `src/hooks/useXProcessor` |
 
 **正確範例：**
 ```typescript
 import { hideImageAnalytical } from '@lib/steganography';
 import { PLATFORM_CONFIGS } from '@lib/types';
-import { PixelBackground } from '@components/PixelBackground/PixelBackground';
+import { Navigation } from '@components/Navigation/Navigation';
 import { Comparison } from '@pages/Comparison';
 ```
 
@@ -547,7 +554,7 @@ import { Comparison } from '@pages/Comparison';
 ```typescript
 import { hideImageAnalytical } from '../lib/steganography';      // ❌
 import { PLATFORM_CONFIGS } from '../../lib/types';             // ❌
-import { PixelBackground } from '../components/PixelBackground'; // ❌
+import { Navigation } from '../components/Navigation';           // ❌
 ```
 
 ---
