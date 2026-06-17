@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
 interface ComparisonItem {
@@ -42,43 +42,61 @@ function ComparisonSlider({
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const updateSliderPosition = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const updateSliderPosition = useCallback((clientX: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const x = clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
     setSliderPosition(percentage);
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    updateSliderPosition(e);
-  }, [updateSliderPosition]);
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      updateSliderPosition(e.clientX);
+    };
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
-    updateSliderPosition(e);
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
   }, [isDragging, updateSliderPosition]);
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      updateSliderPosition(e.touches[0].clientX);
+    };
 
-  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    updateSliderPosition(e);
-  }, [updateSliderPosition]);
+    const handleTouchEnd = () => {
+      setIsDragging(false);
+    };
 
-  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isDragging, updateSliderPosition]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    updateSliderPosition(e);
-  }, [isDragging, updateSliderPosition]);
+    setIsDragging(true);
+    updateSliderPosition(e.clientX);
+  }, [updateSliderPosition]);
 
-  const handleTouchEnd = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    setIsDragging(true);
+    updateSliderPosition(e.touches[0].clientX);
+  }, [updateSliderPosition]);
 
   return (
     <motion.div 
@@ -91,12 +109,7 @@ function ComparisonSlider({
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
         onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         className={`relative w-full cursor-ew-resize border-2 border-base-300 rounded-lg overflow-hidden select-none bg-base-300 transition-all duration-200 ${
           isDragging ? 'border-primary scale-[1.01]' : 'hover:border-primary/50'
         }`}
@@ -105,47 +118,37 @@ function ComparisonSlider({
         <img
           src={processed}
           alt="Processed"
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-300"
+          className="absolute inset-0 w-full h-full object-cover"
           draggable={false}
         />
         {original && (
           <img
             src={original}
             alt="Original"
-            className="absolute inset-0 w-full h-full object-cover transition-all duration-100"
+            className="absolute inset-0 w-full h-full object-cover"
             draggable={false}
             style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
           />
         )}
         {original && (
           <>
-            <motion.div
-              className="absolute inset-y-0 w-1 bg-base-100 shadow-lg cursor-ew-resize"
-              style={{ left: `${sliderPosition}%`, transform: 'translateX(-50%)' }}
-              animate={{ scaleY: isDragging ? 1.05 : 1 }}
-              transition={{ duration: 0.15 }}
+            <div
+              className="absolute top-0 bottom-0 cursor-ew-resize flex items-center justify-center"
+              style={{ left: `${sliderPosition}%`, transform: 'translateX(-50%)', zIndex: 10 }}
             >
-              <motion.div 
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-primary rounded-full shadow-lg flex items-center justify-center transition-all duration-200"
-                animate={{ scale: isDragging ? 1.2 : 1 }}
-              >
+              <div className="w-0.5 h-full bg-base-100 shadow-lg" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-primary rounded-full shadow-lg flex items-center justify-center">
                 <svg className="w-4 h-4 text-primary-content" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path d="M18 8L22 12L18 16M6 8L2 12L6 16" />
                 </svg>
-              </motion.div>
-            </motion.div>
-            <motion.div 
-              className="absolute bottom-3 left-3 px-3 py-1.5 bg-base-100/80 rounded-lg text-base-content text-xs sm:text-sm font-medium backdrop-blur-sm transition-all duration-200"
-              animate={{ opacity: isDragging ? 0.7 : 1, x: isDragging ? -5 : 0 }}
-            >
+              </div>
+            </div>
+            <div className="absolute bottom-3 left-3 px-3 py-1.5 bg-base-100/80 rounded-lg text-base-content text-xs sm:text-sm font-medium backdrop-blur-sm">
               Original
-            </motion.div>
-            <motion.div 
-              className="absolute bottom-3 right-3 px-3 py-1.5 bg-base-100/80 rounded-lg text-base-content text-xs sm:text-sm font-medium backdrop-blur-sm transition-all duration-200"
-              animate={{ opacity: isDragging ? 0.7 : 1, x: isDragging ? 5 : 0 }}
-            >
+            </div>
+            <div className="absolute bottom-3 right-3 px-3 py-1.5 bg-base-100/80 rounded-lg text-base-content text-xs sm:text-sm font-medium backdrop-blur-sm">
               Processed
-            </motion.div>
+            </div>
           </>
         )}
       </div>

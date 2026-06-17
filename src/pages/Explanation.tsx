@@ -245,8 +245,8 @@ export function Explanation() {
               <div 
                 key={index} 
                 className={`rounded-lg p-3 sm:p-4 ${
-                  item.type === 'warning' ? 'bg-warning/20 border border-warning/30' :
-                  item.type === 'info' ? 'bg-info/20 border border-info/30' :
+                  item.type === 'warning' ? 'bg-warning/30 border border-warning/50' :
+                  item.type === 'info' ? 'bg-info/30 border border-info/50' :
                   'bg-base-300'
                 }`}
               >

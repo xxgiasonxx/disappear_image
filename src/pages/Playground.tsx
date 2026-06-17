@@ -144,7 +144,7 @@ export function Playground() {
               )}
 
               {processingError && (
-                <div className="mt-4 p-4 bg-error/10 border border-error/30 rounded-lg">
+                <div className="mt-4 p-4 bg-error/20 border border-error/40 rounded-lg">
                   <p className="text-error">{processingError}</p>
                 </div>
               )}
@@ -218,7 +218,7 @@ export function Playground() {
             )}
 
             {activeStatus === 'error' && activeError && (
-              <div className="border border-error/30 rounded-lg p-6 bg-error/10">
+              <div className="border border-error/40 rounded-lg p-6 bg-error/20">
                 <div className="flex items-center gap-3">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -242,7 +242,7 @@ export function Playground() {
             {activeStatus === 'done' && activeResult && (
               <div className="space-y-6">
                 {activeResult.sizeInMB && (
-                  <div className="border border-success/30 rounded-lg p-4 bg-success/10">
+                  <div className="border border-success/40 rounded-lg p-4 bg-success/20">
                     <p className="text-success">
                       檔案大小: {activeResult.sizeInMB} MB | 
                       方法: {algorithm === 'brute-force' ? '暴力解' : '優化解'}

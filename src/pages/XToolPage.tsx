@@ -103,7 +103,7 @@ export function XToolPage() {
             />
             <div className="space-y-4">
               <svg
-                className="w-16 h-16 mx-auto text-base-content/30"
+                className="w-16 h-16 mx-auto text-base-content"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"

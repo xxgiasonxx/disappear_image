@@ -31,13 +31,13 @@ function ProgressGrid({
         const isActive = i === currentIndex;
         const isLastPass = status === 'pass' && i === enumResults.findIndex(s => s === 'pass');
 
-        let bgClass = 'bg-base-300/50';
+        let bgClass = 'bg-base-300';
         let borderClass = '';
 
         if (status === 'pass') {
-          bgClass = isLastPass ? 'bg-success' : 'bg-success/50';
+          bgClass = isLastPass ? 'bg-success' : 'bg-success';
         } else if (status === 'fail') {
-          bgClass = 'bg-error/30';
+          bgClass = 'bg-error/40';
         }
 
         if (isActive) {
@@ -120,8 +120,8 @@ function ProcessingPanel({
             <div
               key={i}
               className={`px-1 md:px-1.5 py-0.5 rounded text-xs md:text-sm ${
-                i === currentStepIndex ? 'bg-primary/30 text-primary' :
-                i < currentStepIndex ? 'bg-secondary/20 text-secondary' : ''
+                i === currentStepIndex ? 'bg-primary/40 text-primary' :
+                i < currentStepIndex ? 'bg-secondary/30 text-secondary' : ''
               }`}
             >
               {step}

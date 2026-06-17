@@ -120,7 +120,7 @@ export function ImageUploader({ onImageLoaded }: ImageUploaderProps) {
 
       <div className="space-y-2">
         <svg
-          className="w-12 h-12 mx-auto text-base-content/50"
+          className="w-12 h-12 mx-auto text-base-content"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
