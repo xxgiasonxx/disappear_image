@@ -1,381 +1,285 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
 
 interface Step {
   title: string;
   description: string;
-  code?: string;
+  details?: string[];
 }
 
-const steps: Step[] = [
+const OVERVIEW = {
+  title: '西洋棋盤 PNG 演算法',
+  content: '這段程式碼的目的，是把圖片轉成「西洋棋盤狀」的半透明 PNG——奇數格完全透明、偶數格保留色彩——這是社群上常見繞過 X(Twitter) 圖片再壓縮機制的技巧，讓上傳的圖在 1MB 以內仍保有不錯的畫質。',
+};
+
+const ANALYTICAL_STEPS: Step[] = [
   {
-    title: '1. 輸入與初始化',
-    description: '載入載體圖片和秘密圖片，設定目標平台的縮圖尺寸與插值演算法',
-    code: `function hideImageAnalytical(
-  carrierPixels, carrierWidth, carrierHeight,
-  secretPixels, secretWidth, secretHeight,
-  targetWidth, targetHeight, kernel
-) {
-  const outputPixels = new Uint8ClampedArray(carrierPixels);
-
-  const carrierScaleX = carrierWidth / targetWidth;
-  const carrierScaleY = carrierHeight / targetHeight;
-  const sampleRadius = getSampleRadius(kernel, carrierScaleX, carrierScaleY);
-  const kernelFn = getKernelFunction(kernel);
-
-  // ... 遍歷每個目標像素
-  return { success: true, pixels: outputPixels };
-}`,
+    title: '1. 色彩量化（Median-cut 演算法）',
+    description: '將圖片顏色數量減少到指定數量（如 32 色），使用經典的 Median-cut 演算法。',
+    details: [
+      'buildColorHistogram：掃過所有像素，把重複的顏色合併成 {r, g, b, count}，避免重複計算',
+      'computeBoxStats：把顏色包成「色彩空間中的盒子」，記錄 R/G/B 各自的最小最大範圍',
+      'splitBoxAtMedian：找出盒子裡範圍最大的色版，依該色版排序顏色，再依「像素數量」找出加權中位數位置切開',
+      'findBoxToSplit：選總像素數最多的盒子優先切，優先細分「最常見」的顏色區域',
+      'applyQuantization：對每個像素做最近鄰比對（歐式距離平方），找調色盤裡距離最近的顏色替換',
+    ],
   },
   {
-    title: '2. 計算秘密圖位置',
-    description: '根據長寬比計算秘密圖在載體中的縮放比例和偏移量，確保比例正確',
-    code: `const secretAspect = secretWidth / secretHeight;
-const carrierAspect = carrierWidth / carrierHeight;
-
-if (secretAspect > carrierAspect) {
-  sW = carrierWidth;
-  sH = carrierWidth / secretAspect;
-  offsetX = 0;
-  offsetY = (carrierHeight - sH) / 2;
-} else {
-  sH = carrierHeight;
-  sW = carrierHeight * secretAspect;
-  offsetX = (carrierWidth - sW) / 2;
-  offsetY = 0;
-}
-
-const scaleX = sW / secretWidth;
-const scaleY = sH / secretHeight;`,
+    title: '2. 棋盤格化（Checkerboard）',
+    description: '將量化後的圖片轉換成西洋棋盤格式。',
+    details: [
+      '(x+y) 為偶數的格子：保留色彩、alpha=255',
+      '(x+y) 為奇數的格子：強制設成完全透明的白色',
+      '這是繞過社群平台再壓縮的關鍵技巧',
+    ],
   },
   {
-    title: '3. 遍歷目標像素與採樣',
-    description: '對每個目標縮圖像素，收集周圍的採樣點及其 kernel 權重',
-    code: `for (let dy = 0; dy < targetHeight; dy++) {
-  for (let dx = 0; dx < targetWidth; dx++) {
-    const srcX = dx * carrierScaleX;
-    const srcY = dy * carrierScaleY;
-
-    // 收集周圍採樣點
-    const samples = [];
-    for (let py = startY; py <= startY + sampleRadius * 2; py++) {
-      for (let px = startX; px <= startX + sampleRadius * 2; px++) {
-        const distX = Math.abs(px - srcX);
-        const distY = Math.abs(py - srcY);
-        const weight = kernelFn(distX) * kernelFn(distY);
-        samples.push({ px, py, weight });
-      }
-    }
-
-    const isLight = getSecretPixelLight(secX, secY);
-    const targetVal = isLight ? bgValue : 1 - bgValue;
-  }
-}`,
+    title: '3. 圖片放大（Upscale）',
+    description: '用 canvas 將過小的圖放大到至少 1000px。',
+    details: [
+      '保證棋盤格化後肉眼看起來夠細緻',
+      '使用雙線性插值進行平滑放大',
+    ],
   },
   {
-    title: '4. 建構線性系統',
-    description: '根據採樣權重建構 Ax = b 線性系統，其中 b 是目標殘差',
-    code: `const blockSize = Math.ceil(sampleRadius * 2);
-const n = blockSize * blockSize;
-
-// A[s][blockIdx] = sample[s].weight
-const kernelWeights = samples.map(() => new Array(n).fill(0));
-const targetValues = [];
-
-for (let blockIdx = 0; blockIdx < n; blockIdx++) {
-  for (let s = 0; s < samples.length; s++) {
-    kernelWeights[s][blockIdx] = samples[s].weight;
-  }
-  // 目標殘差：希望縮圖後達到的值與 128 的差
-  targetValues.push((targetVal - 128) * strength);
-}`,
-  },
-  {
-    title: '5. 求解線性系統（最小二乘法）',
-    description: '使用共軛梯度法求解 Ax = b，得到每個採樣點的最佳調整值',
-    code: `function solveLeastSquares(A, b, n) {
-  const m = A.length;
-  const solution = new Array(m).fill(0);
-  const tolerance = 1e-10;
-  const maxIterations = 100;
-
-  for (let iter = 0; iter < maxIterations; iter++) {
-    // 計算殘差 r = b - Ax
-    const residual = [];
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (let j = 0; j < m; j++) {
-        sum += A[j][i] * solution[j];
-      }
-      residual.push(b[i] - sum);
-    }
-
-    const rTr = residual.reduce((s, r) => s + r * r, 0);
-    if (rTr < tolerance) break;
-
-    // ... 共軛梯度疊代
-  }
-  return solution;
-}
-
-// 求解得到每個採樣點的調整量
-const adjustments = solveLeastSquares(kernelWeights, targetValues, n);`,
-  },
-  {
-    title: '6. 應用調整值',
-    description: '將計算出的調整值應用到相應的像素，direction 決定增加或減少',
-    code: `const direction = isLight ? 1 : -1;
-
-for (let s = 0; s < samples.length; s++) {
-  const { px, py } = samples[s];
-  const pIdx = (py * carrierWidth + px) * 4;
-
-  const adjust = adjustments[s] * direction * strength;
-
-  outputPixels[pIdx] = clamp(outputPixels[pIdx] + adjust);
-  outputPixels[pIdx + 1] = clamp(outputPixels[pIdx + 1] + adjust);
-  outputPixels[pIdx + 2] = clamp(outputPixels[pIdx + 2] + adjust);
-}
-
-return { success: true, pixels: outputPixels, width: carrierWidth, height: carrierHeight };`,
+    title: '4. 主流程：貪婪搜尋',
+    description: '從 numColors=32、scale=1.0 開始，逐步調整參數找符合 1MB 的組合。',
+    details: [
+      '先檢查：量化→套用→棋盤格化→編碼 PNG，檔案是否 ≤ 1MB',
+      '太大就先減顏色數：32→16→8→4→2',
+      '顏色數降到 2 還是太大，才開始縮小解析度（每次 scale 減 0.1）',
+      'scale 降到 0.3 以下還是不行，回傳失敗',
+      '這是單一路徑、貪婪式的搜尋，找到就停',
+    ],
   },
 ];
 
-export function Explanation() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [animationSpeed, setAnimationSpeed] = useState(1500);
+const BRUTEFORCE_STEPS: Step[] = [
+  {
+    title: '1. 枚舉所有組合',
+    description: '暴力窮舉所有可能的參數組合。',
+    details: [
+      'scaleOptions = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3]（8 個）',
+      'colorOptions = [32, 16, 8, 4, 2]（5 個）',
+      '兩兩配對共 40 種組合',
+      '每種都完整跑一次：縮放→量化→套用→棋盤格化→編碼 PNG',
+    ],
+  },
+  {
+    title: '2. 收集合格候選',
+    description: '只保留檔案大小 ≤ 1MB 的組合。',
+    details: [
+      '40 種組合全部跑完後過濾',
+      '用 originalOrderIndex 給每個候選排序優先度',
+    ],
+  },
+  {
+    title: '3. 選擇最終結果',
+    description: '根據優先順序選擇最好的組合。',
+    details: [
+      'scale === 1.0 時，依顏色數 32→16→8→4→2 給予 0~4 的索引（畫質最佳優先）',
+      'scale !== 1.0 但 numColors === 2 時，索引是 4 + round((1-scale)*10)',
+      '其他組合索引維持 Infinity，等於被排到最後',
+    ],
+  },
+];
 
-  const intervalRef = useRef<number | null>(null);
+const COMPARISON = [
+  {
+    title: '優先順序一致',
+    description: '兩者的選擇邏輯相同：先用最大解析度試遍 32→2 色，不行才降解析度（且只用 2 色）。',
+    type: 'neutral' as const,
+  },
+  {
+    title: '計算成本',
+    description: '優化解最好情況只跑 1 次，最差約 12 次。暴力解固定跑滿 40 次。',
+    type: 'warning' as const,
+  },
+  {
+    title: '暴力解的「全面性」',
+    description: '暴力解的候選清單包含優化解不會嘗試的組合（如 16 色 + 0.7 縮放），但以目前排序邏輯，這些幾乎不會被選中。',
+    type: 'info' as const,
+  },
+];
 
-  const nextStep = useCallback(() => {
-    setCurrentStep((prev) => (prev + 1) % steps.length);
+function AlgorithmSection({ 
+  title, 
+  steps, 
+  isHighlighted = false,
+  bgColor = 'bg-nord-blue/30'
+}: { 
+  title: string; 
+  steps: Step[];
+  isHighlighted?: boolean;
+  bgColor?: string;
+}) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  const toggleExpand = useCallback((index: number) => {
+    setExpandedIndex(prev => prev === index ? null : index);
   }, []);
-
-  const prevStep = useCallback(() => {
-    setCurrentStep((prev) => (prev - 1 + steps.length) % steps.length);
-  }, []);
-
-  const togglePlay = useCallback(() => {
-    setIsPlaying((prev) => !prev);
-  }, []);
-
-  useEffect(() => {
-    if (isPlaying) {
-      intervalRef.current = window.setInterval(() => {
-        setCurrentStep((prev) => (prev + 1) % steps.length);
-      }, animationSpeed);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [isPlaying, animationSpeed]);
-
-  const goToStep = useCallback((index: number) => {
-    setCurrentStep(index);
-    if (isPlaying) setIsPlaying(false);
-  }, [isPlaying]);
 
   return (
-    <div className="min-h-screen">
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold text-center text-base-content mb-2">
-          演算法說明
-        </h1>
-        <p className="text-center text-base-content/70 mb-8">
-          了解如何將秘密圖片藏入載體圖片中
-        </p>
-
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-base-200 rounded-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-base-content">
-                {steps[currentStep].title}
-              </h2>
-
-              <div className="flex gap-2">
-                <button
-                  className="btn btn-sm btn-ghost"
-                  onClick={prevStep}
-                  aria-label="上一步"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <button
-                  className={`btn btn-sm ${isPlaying ? 'btn-error' : 'btn-primary'}`}
-                  onClick={togglePlay}
-                >
-                  {isPlaying ? '暫停' : '播放'}
-                </button>
-                <button
-                  className="btn btn-sm btn-ghost"
-                  onClick={nextStep}
-                  aria-label="下一步"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <p className="text-base-content/70 mb-4">
-              {steps[currentStep].description}
-            </p>
-
-            {steps[currentStep].code && (
-              <div className="bg-base-100 rounded-lg p-4 overflow-x-auto">
-                <pre className="text-sm font-mono">
-                  <code className="text-primary-light">
-                    {steps[currentStep].code}
-                  </code>
-                </pre>
+    <div className={`${bgColor} rounded-xl p-4 sm:p-6 ${isHighlighted ? 'ring-2 ring-nord-ice' : ''}`}>
+      <h3 className={`text-lg sm:text-xl font-bold mb-4 ${isHighlighted ? 'text-nord-ice' : 'text-nord-sand'}`}>
+        {title}
+      </h3>
+      <div className="space-y-3">
+        {steps.map((step, index) => (
+          <div key={index} className="bg-nord-dark/50 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleExpand(index)}
+              className="w-full px-4 py-3 flex items-center justify-between text-left"
+            >
+              <span className="text-nord-snow font-medium text-sm sm:text-base">{step.title}</span>
+              <svg 
+                className={`w-4 h-4 text-nord-snow/50 transition-transform duration-200 ${expandedIndex === index ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {expandedIndex === index && (
+              <div className="px-4 pb-4">
+                <p className="text-nord-snow/70 text-sm mb-3">{step.description}</p>
+                {step.details && (
+                  <ul className="space-y-1.5">
+                    {step.details.map((detail, i) => (
+                      <li key={i} className="text-nord-snow/60 text-xs sm:text-sm flex items-start gap-2">
+                        <span className="text-nord-ice mt-1">•</span>
+                        <span>{detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-          <div className="bg-base-200 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold text-base-content mb-4">步驟進度</h2>
+export function Explanation() {
+  const [showAnalytical, setShowAnalytical] = useState(true);
+  const [showBruteForce, setShowBruteForce] = useState(true);
 
-            <div className="flex gap-2 mb-4">
-              {steps.map((step, idx) => (
-                <button
-                  key={idx}
-                  className={`flex-1 h-2 rounded-full transition-all duration-300 ${
-                    idx === currentStep
-                      ? 'bg-primary scale-y-150'
-                      : idx < currentStep
-                      ? 'bg-success'
-                      : 'bg-base-300 hover:bg-base-100'
-                  }`}
-                  onClick={() => goToStep(idx)}
-                  aria-label={step.title}
-                />
-              ))}
-            </div>
+  return (
+    <div className="min-h-screen p-4 sm:p-6 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-8 sm:mb-10 md:mb-12"
+        >
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-nord-snow mb-3 sm:mb-4">
+            演算法說明
+          </h1>
+          <p className="text-nord-snow/70 text-sm sm:text-base md:text-lg max-w-2xl mx-auto">
+            了解如何將圖片轉換成「西洋棋盤狀」的半透明 PNG，繞過社群平台的圖片再壓縮機制
+          </p>
+        </motion.div>
 
-            <div className="flex justify-between text-xs text-base-content/50 mb-2">
-              <span>步驟 {currentStep + 1} / {steps.length}</span>
-              <span>{Math.round(((currentStep + 1) / steps.length) * 100)}% 完成</span>
-            </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-nord-blue/30 rounded-xl p-4 sm:p-6 mb-6 sm:mb-8"
+        >
+          <h2 className="text-lg sm:text-xl font-bold text-nord-ice mb-3">{OVERVIEW.title}</h2>
+          <p className="text-nord-snow/80 text-sm sm:text-base leading-relaxed">
+            {OVERVIEW.content}
+          </p>
+        </motion.div>
 
-            <div>
-              <label className="text-sm text-base-content/70">
-                動畫速度: {animationSpeed}ms
-              </label>
-              <input
-                type="range"
-                min="200"
-                max="3000"
-                step="100"
-                value={animationSpeed}
-                onChange={(e) => setAnimationSpeed(Number(e.target.value))}
-                className="w-full mt-2"
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mb-6 sm:mb-8"
+        >
+          <div className="flex flex-wrap gap-2 sm:gap-3 mb-4">
+            <button
+              onClick={() => setShowAnalytical(!showAnalytical)}
+              className={`btn btn-sm ${showAnalytical ? 'btn-primary' : 'btn-ghost'}`}
+            >
+              優化解（Analytical）
+            </button>
+            <button
+              onClick={() => setShowBruteForce(!showBruteForce)}
+              className={`btn btn-sm ${showBruteForce ? 'btn-secondary' : 'btn-ghost'}`}
+            >
+              暴力解（Brute Force）
+            </button>
+          </div>
+
+          <div className="space-y-4 sm:space-y-6">
+            {showAnalytical && (
+              <AlgorithmSection
+                title="優化解（Analytical / processImageForX）"
+                steps={ANALYTICAL_STEPS}
+                isHighlighted={true}
+                bgColor="bg-nord-ice/10"
               />
-            </div>
+            )}
+            {showBruteForce && (
+              <AlgorithmSection
+                title="暴力解（Brute Force / bruteForceXProcess）"
+                steps={BRUTEFORCE_STEPS}
+                bgColor="bg-nord-sand/10"
+              />
+            )}
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-nord-blue/30 rounded-xl p-4 sm:p-6"
+        >
+          <h2 className="text-lg sm:text-xl font-bold text-nord-snow mb-4">兩者比較</h2>
+          <div className="space-y-3 sm:space-y-4">
+            {COMPARISON.map((item, index) => (
+              <div 
+                key={index} 
+                className={`rounded-lg p-3 sm:p-4 ${
+                  item.type === 'warning' ? 'bg-yellow-500/20 border border-yellow-500/30' :
+                  item.type === 'info' ? 'bg-blue-500/20 border border-blue-500/30' :
+                  'bg-nord-dark/50'
+                }`}
+              >
+                <h3 className={`font-semibold mb-2 ${
+                  item.type === 'warning' ? 'text-yellow-300' :
+                  item.type === 'info' ? 'text-blue-300' :
+                  'text-nord-snow'
+                }`}>
+                  {item.title}
+                </h3>
+                <p className="text-nord-snow/70 text-sm">{item.description}</p>
+              </div>
+            ))}
           </div>
 
-          <div className="bg-base-200 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold text-base-content mb-4">核心原理</h2>
-
-            <div className="space-y-4">
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-2">插值縮放的加權平均</p>
-                <p className="text-lg font-mono text-base-content">
-                  P<sub>dst</sub> = Σ w<sub>i</sub> · P<sub>src,i</sub>
-                </p>
-              </div>
-
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-2">目標值設定</p>
-                <p className="text-sm text-base-content">
-                  秘密亮部 → 目標為背景色（白=255 或 黑=0）
-                  <br />
-                  秘密暗部 → 目標為 1-背景色（即 0 或 255）
-                </p>
-              </div>
-
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-2">為什麼秘密會消失？</p>
-                <p className="text-sm text-base-content">
-                  當秘密圖的某個區域經過縮放後，該區域內所有像素的調整值會被加權平均。
-                  我們透過最小二乘法計算精確的調整值，使得縮圖後這些調整的平均值趨近於 0，
-                  因此秘密區域看起來就像背景色，秘密就「消失」了。
-                </p>
-              </div>
-
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-2">解析法 vs 暴力法</p>
-                <div className="grid grid-cols-2 gap-4 mt-2">
-                  <div>
-                    <p className="font-semibold text-primary">解析法（最小二乘法）</p>
-                    <ul className="text-xs text-base-content/70 list-disc list-inside">
-                      <li>建構線性系統 Ax = b</li>
-                      <li>使用共軛梯度法求解</li>
-                      <li>精確解，效率高</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-warning">暴力法（離散搜尋）</p>
-                    <ul className="text-xs text-base-content/70 list-disc list-inside">
-                      <li>窮舉 9 個候選值</li>
-                      <li>選擇誤差最小的</li>
-                      <li>近似解，速度慢</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="mt-6 p-4 bg-nord-dark/50 rounded-lg">
+            <h3 className="text-nord-ice font-semibold mb-3">結論</h3>
+            <p className="text-nord-snow/70 text-sm leading-relaxed">
+              暴力解是用 40 倍運算量去換一個跟優化解幾乎相同的結果。以目前的排序邏輯來看，
+              暴力解窮舉的 40 種組合裡，大部分（尤其是中間顏色數搭配縮小解析度的組合）
+              即使算出來合法也幾乎不會被真正採用，純粹是陪跑。
+            </p>
           </div>
+        </motion.div>
 
-          <div className="bg-base-200 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-base-content mb-4">關鍵公式</h2>
-
-            <div className="space-y-4">
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-1">採樣半徑</p>
-                <p className="text-lg font-mono text-base-content">
-                  sampleRadius = ceil(baseRadius × max(scaleX, scaleY))
-                </p>
-              </div>
-
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-1">線性系統</p>
-                <p className="text-lg font-mono text-base-content">
-                  A · x = b
-                </p>
-                <p className="text-xs text-base-content/50 mt-1">
-                  A: 權重矩陣, x: 調整量, b: 目標殘差
-                </p>
-              </div>
-
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-1">MSE（均方誤差）</p>
-                <p className="text-lg font-mono text-base-content">
-                  MSE = Σ(P<sub>avg</sub> - P<sub>bg</sub>)² / n
-                </p>
-                <p className="text-xs text-base-content/50 mt-1">
-                  用於衡量處理後的縮圖與背景色的差異（MSE 越低秘密消失越徹底）
-                </p>
-              </div>
-
-              <div className="bg-base-100 rounded-lg p-4">
-                <p className="text-sm text-base-content/70 mb-1">PSNR（峰值信噪比）</p>
-                <p className="text-lg font-mono text-base-content">
-                  PSNR = 10 · log<sub>10</sub>(MAX² / MSE)
-                </p>
-                <p className="text-xs text-base-content/50 mt-1">
-                  MAX = 255，PSNR 大於 30dB 表示視覺品質良好
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="mt-6 sm:mt-8 text-center text-nord-snow/50 text-xs sm:text-sm"
+        >
+          <p>核心原理：利用社群平台的圖片縮放演算法特性，透過西洋棋盤格式保留視覺品質</p>
+        </motion.div>
       </div>
     </div>
   );

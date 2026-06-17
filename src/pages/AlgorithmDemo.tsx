@@ -1,408 +1,453 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
+import { loadImageUrl } from '@lib/imageUtils';
+import {
+  processImageAnalyticalWithProgress,
+  processImageBruteForceWithProgress,
+  type ProcessingProgress,
+  type ProcessingResult,
+} from '@lib/animatedXProcessor';
 
-interface PixelCanvasAnimationProps {
-  isPlaying: boolean;
-  speed: number;
-  onComplete: () => void;
-}
-
-interface AnimationStep {
-  label: string;
-  description: string;
-  duration: number;
-}
-
-const ANIMATION_STEPS: AnimationStep[] = [
-  { label: '01 隨機像素', description: '初始化隨機像素分布', duration: 800 },
-  { label: '02 棋盤篩選', description: '根據 (x+y)%2 模式識別候選像素', duration: 600 },
-  { label: '03 色彩量化', description: '將候選像素量化至目標色彩區間', duration: 600 },
-  { label: '04 透明度動畫', description: '像素漸變為透明，白色背景顯現', duration: 1200 },
-  { label: '05 權重計算', description: '根據縮放演算法權重評估候選像素', duration: 600 },
-  { label: '06 選擇最優', description: '選擇 MSE 最低的像素組合', duration: 600 },
+const EXAMPLE_IMAGES = [
+  { name: '範例圖 1', path: '/example2.jpg' },
+  { name: '範例圖 2', path: '/example3.jpg' },
 ];
 
-const GRID_SIZE = 16;
-const CELL_SIZE = 40;
-const CANVAS_SIZE = GRID_SIZE * CELL_SIZE;
+const ANALYTICAL_STEPS = ['載入圖片', '尺寸調整', '色彩量化', '棋盤格化', 'PNG 編碼', '大小檢查', '完成'];
+const BRUTE_FORCE_STEPS = ['載入圖片', '尺寸調整', '枚舉組合', '嘗試組合', '選擇結果', '完成'];
+const SCALE_OPTIONS = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
+const COLOR_OPTIONS = [32, 16, 8, 4, 2];
 
-function PixelCanvasAnimation({ isPlaying, speed, onComplete }: PixelCanvasAnimationProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [transparentPixels, setTransparentPixels] = useState<Set<string>>(new Set());
-  const animationRef = useRef<number | null>(null);
-  const stepStartTimeRef = useRef<number>(0);
-  const stepRef = useRef(0);
+function ProgressGrid({ 
+  enumResults, 
+  currentIndex 
+}: { 
+  enumResults: ('pending' | 'pass' | 'fail')[];
+  currentIndex: number;
+}) {
+  return (
+    <div className="grid grid-cols-5 md:grid-cols-8 gap-1 md:gap-1.5 p-2 md:p-4 bg-nord-dark rounded-lg justify-center">
+      {enumResults.map((status, i) => {
+        const isActive = i === currentIndex;
+        const isLastPass = status === 'pass' && i === enumResults.findIndex(s => s === 'pass');
+
+        let bgClass = 'bg-nord-blue/30';
+        let borderClass = '';
+
+        if (status === 'pass') {
+          bgClass = isLastPass ? 'bg-green-500' : 'bg-green-500/50';
+        } else if (status === 'fail') {
+          bgClass = 'bg-red-500/30';
+        }
+
+        if (isActive) {
+          borderClass = 'border-2 border-nord-ice animate-pulse';
+        }
+
+        return (
+          <div
+            key={i}
+            className={`w-4 h-4 md:w-6 md:h-6 lg:w-8 lg:h-8 rounded ${bgClass} ${borderClass} transition-all duration-200`}
+            title={`scale=${SCALE_OPTIONS[Math.floor(i / 5)].toFixed(1)}, colors=${COLOR_OPTIONS[i % 5]}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ImagePreviewPanel({ 
+  dataUrl, 
+  label 
+}: { 
+  dataUrl: string | null; 
+  label: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {dataUrl ? (
+        <img 
+          src={dataUrl} 
+          alt={label} 
+          className="max-w-full max-h-64 sm:max-h-80 md:max-h-96 lg:max-h-[28rem] xl:max-h-[32rem] rounded-lg border-2 border-nord-blue object-contain"
+        />
+      ) : (
+        <div className="w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-[28rem] lg:h-[28rem] xl:w-[32rem] xl:h-[32rem] bg-nord-blue/30 rounded-lg flex items-center justify-center">
+          <span className="text-nord-snow/50 text-lg sm:text-xl md:text-2xl">{label}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProcessingPanel({ 
+  title, 
+  progress,
+  steps,
+  enumResults,
+  enumIndex,
+  isBruteForce,
+}: { 
+  title: string;
+  progress: ProcessingProgress | null;
+  steps: string[];
+  enumResults: ('pending' | 'pass' | 'fail')[];
+  enumIndex: number;
+  isBruteForce: boolean;
+}) {
+  const currentStepIndex = progress ? Math.min(progress.currentStep, steps.length - 1) : 0;
+  const currentStepName = progress ? progress.stepName : steps[0];
+
+  return (
+    <div className="bg-nord-dark/50 rounded-xl p-3 sm:p-4 md:p-6">
+      <h3 className={`text-lg sm:text-xl md:text-2xl font-bold mb-2 md:mb-4 text-center ${isBruteForce ? 'text-nord-sand' : 'text-nord-ice'}`}>
+        {title}
+      </h3>
+      
+      <div className="mb-3 md:mb-4">
+        <div className="flex justify-between text-sm sm:text-base mb-1 md:mb-2">
+          <span className="text-nord-snow font-medium">{currentStepName}</span>
+          <span className="text-nord-ice font-mono text-sm sm:text-base md:text-lg">{Math.round(progress?.progress ?? 0)}%</span>
+        </div>
+        <div className="h-1.5 md:h-2 bg-nord-blue/30 rounded-full overflow-hidden">
+          <motion.div 
+            className="h-full bg-nord-ice" 
+            animate={{ width: `${progress?.progress ?? 0}%` }}
+          />
+        </div>
+        <div className="flex gap-1 md:gap-2 text-xs md:text-sm text-nord-snow/60 mt-2 md:mt-3 flex-wrap">
+          {steps.map((step, i) => (
+            <div
+              key={i}
+              className={`px-1 md:px-1.5 py-0.5 rounded text-xs md:text-sm ${
+                i === currentStepIndex ? 'bg-nord-ice/30 text-nord-ice' :
+                i < currentStepIndex ? 'bg-nord-sand/20 text-nord-sand' : ''
+              }`}
+            >
+              {step}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {isBruteForce ? (
+        <div className="mb-3 md:mb-4">
+          <div className="flex justify-center">
+            <ProgressGrid enumResults={enumResults} currentIndex={enumIndex} />
+          </div>
+          {progress && progress.enumIndex >= 0 && (
+            <div className="text-center mt-2 md:mt-3 text-xs sm:text-sm md:text-base text-nord-sand font-medium">
+              Trying: scale={progress.scale.toFixed(1)}, colors={progress.numColors}
+            </div>
+          )}
+        </div>
+      ) : (
+        progress && (
+          <div className="text-center mb-3 md:mb-4 text-xs sm:text-sm md:text-base text-nord-sand font-medium">
+            Colors: {progress.numColors} | Scale: {progress.scale.toFixed(1)}
+          </div>
+        )
+      )}
+
+      <div className="flex justify-center mt-3 md:mt-4">
+        <ImagePreviewPanel 
+          dataUrl={progress?.processedPixels ?? null} 
+          label="Processing..." 
+        />
+      </div>
+    </div>
+  );
+}
+
+function ResultPanel({ 
+  title, 
+  result,
+  isHighlighted = false,
+}: { 
+  title: string;
+  result: ProcessingResult | null;
+  isHighlighted?: boolean;
+}) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: result ? 1 : 0.5, y: result ? 0 : 10 }}
+      className={`bg-nord-blue/30 rounded-xl p-4 sm:p-6 md:p-8 ${isHighlighted ? 'ring-2 ring-nord-ice' : ''}`}
+    >
+      <h4 className={`text-lg sm:text-xl font-bold mb-3 sm:mb-4 ${isHighlighted ? 'text-nord-ice' : 'text-nord-sand'}`}>
+        {title}
+      </h4>
+      
+      {result ? (
+        <div className="space-y-3 sm:space-y-4">
+          <ImagePreviewPanel dataUrl={result.previewUrl} label="Result" />
+          <div className="text-sm sm:text-base space-y-2">
+            <div className="flex justify-between text-nord-snow/80">
+              <span>Processing Time:</span>
+              <span className="text-nord-ice font-mono">{result.time}ms</span>
+            </div>
+            <div className="flex justify-between text-nord-snow/80">
+              <span>Output Size:</span>
+              <span className="text-nord-ice font-mono">{result.width}×{result.height}</span>
+            </div>
+            <div className="flex justify-between text-nord-snow/80">
+              <span>File Size:</span>
+              <span className="text-nord-ice font-mono">{result.sizeInMB} MB</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="h-32 sm:h-48 flex items-center justify-center">
+          <span className="text-nord-snow/50 text-sm sm:text-base">Waiting...</span>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+export function AlgorithmDemo() {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
+  const [speed, setSpeed] = useState(1);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const [analyticalProgress, setAnalyticalProgress] = useState<ProcessingProgress | null>(null);
+  const [bruteForceProgress, setBruteForceProgress] = useState<ProcessingProgress | null>(null);
+  const [analyticalResult, setAnalyticalResult] = useState<ProcessingResult | null>(null);
+  const [bruteForceResult, setBruteForceResult] = useState<ProcessingResult | null>(null);
+
+  const isPausedRef = useRef({ value: false });
   const speedRef = useRef(1);
-  const onCompleteRef = useRef(onComplete);
+  const processingRef = useRef<{ analytical: AbortController | null; bruteForce: AbortController | null }>({
+    analytical: null,
+    bruteForce: null,
+  });
 
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
 
   useEffect(() => {
-    onCompleteRef.current = onComplete;
-  }, [onComplete]);
+    isPausedRef.current.value = isPaused;
+  }, [isPaused]);
 
-  const getCheckerboardPattern = useCallback(() => {
-    const pattern: boolean[][] = [];
-    for (let y = 0; y < GRID_SIZE; y++) {
-      pattern[y] = [];
-      for (let x = 0; x < GRID_SIZE; x++) {
-        pattern[y][x] = (x + y) % 2 === 0;
-      }
-    }
-    return pattern;
-  }, []);
+  const handleSelectImage = useCallback(async (imagePath: string) => {
+    setSelectedImage(imagePath);
+    setIsPlaying(true);
+    setIsComplete(false);
+    setIsPaused(false);
+    setAnalyticalProgress(null);
+    setBruteForceProgress(null);
+    setAnalyticalResult(null);
+    setBruteForceResult(null);
 
-  const drawCanvas = useCallback((transparentSet: Set<string>, currentProgress: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const fullPath = imagePath;
+    const imageData = await loadImageUrl(fullPath);
+    setOriginalImageUrl(imageData.dataUrl);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    isPausedRef.current.value = false;
 
-    const pattern = getCheckerboardPattern();
+    const analyticalAbort = new AbortController();
+    const bruteForceAbort = new AbortController();
+    processingRef.current = { analytical: analyticalAbort, bruteForce: bruteForceAbort };
 
-    for (let y = 0; y < GRID_SIZE; y++) {
-      for (let x = 0; x < GRID_SIZE; x++) {
-        const key = `${x},${y}`;
-        const isEven = pattern[y][x];
+    const analyticalPromise = processImageAnalyticalWithProgress(
+      fullPath,
+      (progress) => {
+        setAnalyticalProgress({ ...progress });
+      },
+      isPausedRef.current,
+      speedRef.current
+    );
 
-        if (isEven) {
-          ctx.fillStyle = '#88C0D0';
-        } else {
-          ctx.fillStyle = '#5E81AC';
-        }
+    const bruteForcePromise = processImageBruteForceWithProgress(
+      fullPath,
+      (progress) => {
+        setBruteForceProgress({ ...progress });
+      },
+      isPausedRef.current,
+      speedRef.current
+    );
 
-        if (transparentSet.has(key) && currentProgress > 0) {
-          ctx.globalAlpha = Math.max(0, 1 - currentProgress);
-          ctx.fillStyle = '#ffffff';
-        }
-
-        const padding = 1;
-        ctx.fillRect(
-          x * CELL_SIZE + padding,
-          y * CELL_SIZE + padding,
-          CELL_SIZE - padding * 2,
-          CELL_SIZE - padding * 2
-        );
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    ctx.strokeStyle = '#3B4252';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= GRID_SIZE; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * CELL_SIZE, 0);
-      ctx.lineTo(i * CELL_SIZE, CANVAS_SIZE);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, i * CELL_SIZE);
-      ctx.lineTo(CANVAS_SIZE, i * CELL_SIZE);
-      ctx.stroke();
-    }
-  }, [getCheckerboardPattern]);
-
-  useEffect(() => {
-    if (!isPlaying) {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-      return;
-    }
-
-    stepRef.current = currentStep;
-    stepStartTimeRef.current = 0;
-
-    const animate = (timestamp: number) => {
-      if (!stepStartTimeRef.current) {
-        stepStartTimeRef.current = timestamp;
-      }
-
-      const elapsed = timestamp - stepStartTimeRef.current;
-      const currentStepData = ANIMATION_STEPS[stepRef.current];
-      const adjustedDuration = currentStepData.duration / speedRef.current;
-
-      if (elapsed < adjustedDuration) {
-        const newProgress = elapsed / adjustedDuration;
-        setProgress(newProgress);
-
-        if (stepRef.current === 3) {
-          const pattern = getCheckerboardPattern();
-          const newTransparent = new Set<string>();
-          for (let y = 0; y < GRID_SIZE; y++) {
-            for (let x = 0; x < GRID_SIZE; x++) {
-              if (pattern[y][x] && newProgress > 0.3) {
-                newTransparent.add(`${x},${y}`);
-              }
-            }
-          }
-          setTransparentPixels(newTransparent);
-          drawCanvas(newTransparent, newProgress);
-        } else {
-          drawCanvas(transparentPixels, 0);
-        }
-
-        animationRef.current = requestAnimationFrame(animate);
-      } else {
-        if (stepRef.current < ANIMATION_STEPS.length - 1) {
-          setCurrentStep(prev => prev + 1);
-          stepRef.current = stepRef.current + 1;
-          stepStartTimeRef.current = 0;
-          setProgress(0);
-          drawCanvas(transparentPixels, 0);
-          animationRef.current = requestAnimationFrame(animate);
-        } else {
-          onCompleteRef.current();
-        }
-      }
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
+    Promise.all([analyticalPromise, bruteForcePromise]).then(([analyticalRes, bruteForceRes]) => {
+      setAnalyticalResult(analyticalRes);
+      setBruteForceResult(bruteForceRes);
+      setIsComplete(true);
+      setIsPlaying(false);
+    }).catch((error) => {
+      console.error('Processing error:', error);
+      setIsPlaying(false);
+    });
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      analyticalAbort.abort();
+      bruteForceAbort.abort();
     };
-  }, [isPlaying, currentStep, getCheckerboardPattern, drawCanvas, transparentPixels]);
-
-  useEffect(() => {
-    drawCanvas(transparentPixels, progress);
-  }, [drawCanvas, transparentPixels, progress]);
-
-  return (
-    <div className="flex flex-col items-center gap-6">
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_SIZE}
-          height={CANVAS_SIZE}
-          className="border-4 border-nord-blue rounded-lg shadow-xl"
-          style={{ imageRendering: 'pixelated' }}
-        />
-        <div className="absolute -top-12 left-0 right-0 text-center">
-          <span className="text-2xl font-bold text-nord-snow bg-nord-dark/80 px-4 py-1 rounded">
-            {ANIMATION_STEPS[currentStep].label}
-          </span>
-        </div>
-      </div>
-
-      <div className="w-full max-w-xl">
-        <div className="flex justify-between text-sm text-nord-snow/80 mb-2">
-          <span>{ANIMATION_STEPS[currentStep].description}</span>
-          <span>{Math.round(progress * 100)}%</span>
-        </div>
-        <div className="h-2 bg-nord-dark rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-nord-ice"
-            initial={{ width: 0 }}
-            animate={{ width: `${progress * 100}%` }}
-            transition={{ duration: 0.1 }}
-          />
-        </div>
-      </div>
-
-      <div className="flex gap-4 text-sm text-nord-snow/60">
-        {ANIMATION_STEPS.map((step, index) => (
-          <div
-            key={index}
-            className={`px-2 py-1 rounded ${
-              index === currentStep
-                ? 'bg-nord-ice/30 text-nord-ice'
-                : index < currentStep
-                ? 'bg-nord-sand/20 text-nord-sand'
-                : ''
-            }`}
-          >
-            {step.label.split(' ')[0]}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function AlgorithmDemo() {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(1);
-  const [isComplete, setIsComplete] = useState(false);
-
-  const handleComplete = useCallback(() => {
-    setIsPlaying(false);
-    setIsComplete(true);
   }, []);
 
   const handleReset = useCallback(() => {
+    if (processingRef.current.analytical) {
+      processingRef.current.analytical.abort();
+    }
+    if (processingRef.current.bruteForce) {
+      processingRef.current.bruteForce.abort();
+    }
+    setSelectedImage(null);
+    setOriginalImageUrl(null);
     setIsPlaying(false);
     setIsComplete(false);
+    setIsPaused(false);
+    setAnalyticalProgress(null);
+    setBruteForceProgress(null);
+    setAnalyticalResult(null);
+    setBruteForceResult(null);
   }, []);
 
-  const handlePlay = useCallback(() => {
-    if (isComplete) {
-      handleReset();
-      setTimeout(() => setIsPlaying(true), 100);
-    } else {
-      setIsPlaying(true);
-    }
-  }, [isComplete, handleReset]);
+  const handleTogglePause = useCallback(() => {
+    setIsPaused(prev => !prev);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-nord-dark py-12 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-nord-dark py-6 sm:py-8 md:py-12 px-2 sm:px-4">
+      <div className="max-w-8xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
+          className="text-center mb-6 sm:mb-8 md:mb-10"
         >
-          <h1 className="text-4xl font-bold text-nord-snow mb-4">
-            演算法視覺化演示
-          </h1>
-          <p className="text-nord-snow/70 text-lg">
-            深入了解像素級攻擊如何利用縮放演算法漏洞
-          </p>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-nord-snow mb-2 sm:mb-3 md:mb-4">Algorithm Visualization</h1>
+          <p className="text-nord-snow/70 text-sm sm:text-base md:text-xl">Understanding how the two processing methods work</p>
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="bg-nord-blue/30 rounded-2xl p-8 mb-8"
+          className="bg-nord-blue/30 rounded-2xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8"
         >
-          <PixelCanvasAnimation
-            isPlaying={isPlaying}
-            speed={speed}
-            onComplete={handleComplete}
-          />
+          <div className="flex flex-wrap justify-center gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
+            {EXAMPLE_IMAGES.map(img => (
+              <button
+                key={img.path}
+                onClick={() => handleSelectImage(img.path)}
+                disabled={isPlaying}
+                className={`btn sm:btn-lg ${selectedImage === img.path ? 'btn-primary' : 'btn-ghost'} gap-2`}
+              >
+                {img.name}
+              </button>
+            ))}
+          </div>
 
-          <div className="flex justify-center items-center gap-6 mt-8">
-            <button
-              onClick={handlePlay}
-              className="btn btn-primary gap-2"
-              disabled={isPlaying}
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-              </svg>
-              {isComplete ? '重新播放' : isPlaying ? '播放中...' : '播放'}
-            </button>
+          {selectedImage && (
+            <>
+{originalImageUrl && (
+                <div className="mb-6 sm:mb-8 flex justify-center">
+                  <div className="text-center">
+                    <span className="text-xs sm:text-sm md:text-base text-nord-snow/60 mb-2 md:mb-3 block">Original Image</span>
+                    <img 
+                      src={originalImageUrl} 
+                      alt="Original" 
+                      className="max-w-full max-h-64 sm:max-h-80 md:max-h-96 lg:max-h-[28rem] xl:max-h-[32rem] rounded-lg border-2 border-nord-blue"
+                    />
+                  </div>
+                </div>
+              )}
 
-            <button
-              onClick={handleReset}
-              className="btn btn-ghost text-nord-snow"
-            >
-              重置
-            </button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mb-6 sm:mb-8">
+                <ProcessingPanel
+                  title="Analytical Method"
+                  progress={analyticalProgress}
+                  steps={ANALYTICAL_STEPS}
+                  enumResults={[]}
+                  enumIndex={-1}
+                  isBruteForce={false}
+                />
 
-            <div className="flex items-center gap-3">
-              <span className="text-nord-snow/70 text-sm">速度:</span>
-              <input
-                type="range"
-                min="0.1"
-                max="3"
-                step="0.1"
-                value={speed}
-                onChange={(e) => setSpeed(parseFloat(e.target.value))}
-                className="range range-primary range-xs w-32"
-              />
-              <span className="text-nord-ice font-mono w-12">{speed.toFixed(1)}x</span>
+                <ProcessingPanel
+                  title="Brute Force Method"
+                  progress={bruteForceProgress}
+                  steps={BRUTE_FORCE_STEPS}
+                  enumResults={bruteForceProgress?.enumResults ?? Array(40).fill('pending')}
+                  enumIndex={bruteForceProgress?.enumIndex ?? -1}
+                  isBruteForce={true}
+                />
+              </div>
+
+              <div className="flex flex-wrap justify-center items-center gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+                <button
+                  onClick={handleTogglePause}
+                  className="btn btn-secondary gap-2"
+                  disabled={!isPlaying}
+                >
+                  {isPaused ? (
+                    <>
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                      </svg>
+                      Resume
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" />
+                      </svg>
+                      Pause
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleReset}
+                  className="btn btn-ghost text-nord-snow"
+                >
+                  Reset
+                </button>
+
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="text-nord-snow/70 text-xs sm:text-sm">Speed:</span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="5"
+                    step="0.1"
+                    value={speed}
+                    onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                    className="range range-primary range-xs w-20 sm:w-32"
+                  />
+                  <span className="text-nord-ice font-mono w-10 sm:w-12 text-xs sm:text-sm">{speed.toFixed(1)}x</span>
+                </div>
+              </div>
+
+              {isComplete && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 md:gap-8 mt-8 sm:mt-10"
+                >
+                  <ResultPanel 
+                    title="Analytical Result" 
+                    result={analyticalResult}
+                    isHighlighted={analyticalResult ? parseFloat(analyticalResult.sizeInMB) <= 1 : false}
+                  />
+                  <ResultPanel 
+                    title="Brute Force Result" 
+                    result={bruteForceResult}
+                    isHighlighted={bruteForceResult ? parseFloat(bruteForceResult.sizeInMB) <= 1 : false}
+                  />
+                </motion.div>
+              )}
+            </>
+          )}
+
+          {!selectedImage && (
+            <div className="text-center py-10 sm:py-16">
+              <p className="text-nord-snow/60 text-sm sm:text-base md:text-lg">Select an image above to start demo</p>
             </div>
-          </div>
+          )}
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="grid md:grid-cols-2 gap-6"
-        >
-          <div className="bg-nord-blue/20 rounded-xl p-6">
-            <h3 className="text-xl font-semibold text-nord-sand mb-4">
-              暴力搜尋法 (Brute Force)
-            </h3>
-            <ul className="space-y-2 text-nord-snow/80 text-sm">
-              <li className="flex items-start gap-2">
-                <span className="text-nord-ice">•</span>
-                枚舉所有可能的像素組合
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-nord-ice">•</span>
-                時間複雜度：指數級 O(k^n)
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-nord-ice">•</span>
-                適合小尺寸影像是 16x16
-              </li>
-            </ul>
-          </div>
-
-          <div className="bg-nord-blue/20 rounded-xl p-6">
-            <h3 className="text-xl font-semibold text-nord-sand mb-4">
-              解析求解法 (Analytical)
-            </h3>
-            <ul className="space-y-2 text-nord-snow/80 text-sm">
-              <li className="flex items-start gap-2">
-                <span className="text-nord-ice">•</span>
-                透過矩陣運算直接求解
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-nord-ice">•</span>
-                時間複雜度：多項式級 O(n²)
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-nord-ice">•</span>
-                適合任意尺寸影像
-              </li>
-            </ul>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="mt-8 bg-nord-blue/10 rounded-xl p-6"
-        >
-          <h3 className="text-lg font-semibold text-nord-sand mb-4">縮放演算法權重矩陣</h3>
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th className="text-nord-snow">演算法</th>
-                  <th className="text-nord-snow">感受野</th>
-                  <th className="text-nord-snow">權重重疊性</th>
-                  <th className="text-nord-snow">可預測性</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="text-nord-ice">雙線性</td>
-                  <td className="text-nord-snow/80">2×2</td>
-                  <td className="text-nord-sand">高</td>
-                  <td className="text-green-400">100%</td>
-                </tr>
-                <tr>
-                  <td className="text-nord-ice">雙三次</td>
-                  <td className="text-nord-snow/80">4×4</td>
-                  <td className="text-nord-sand">中</td>
-                  <td className="text-green-400">100%</td>
-                </tr>
-                <tr>
-                  <td className="text-nord-ice">蘭索斯</td>
-                  <td className="text-nord-snow/80">6×6</td>
-                  <td className="text-nord-sand">低</td>
-                  <td className="text-yellow-400">90%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
       </div>
     </div>
   );
