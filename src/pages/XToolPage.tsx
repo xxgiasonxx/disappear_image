@@ -119,7 +119,7 @@ export function XToolPage() {
                 <p className="text-lg font-medium text-base-content">
                   點擊或拖曳上傳圖片
                 </p>
-                <p className="text-sm text-base-content/50 mt-1">
+                <p className="text-sm text-base-content/70 mt-1">
                   支援 JPEG, PNG, WebP (最大 10MB). 自動壓縮至 1MB 以內
                 </p>
               </div>
@@ -131,7 +131,7 @@ export function XToolPage() {
           <div className="text-center py-12">
             <div className="loading loading-spinner loading-lg text-primary"></div>
             <p className="mt-4 text-lg text-base-content">處理中...</p>
-            <p className="text-sm text-base-content/50">正在進行色彩量化與棋盤格處理</p>
+            <p className="text-sm text-base-content/70">正在進行色彩量化與棋盤格處理</p>
           </div>
         )}
 
@@ -187,7 +187,7 @@ export function XToolPage() {
                       />
                     </div>
                     {result.width && result.height && (
-                      <p className="text-sm text-base-content/50">
+                      <p className="text-sm text-base-content/70">
                         {result.width} x {result.height} px
                       </p>
                     )}
@@ -213,7 +213,7 @@ export function XToolPage() {
                         className="w-full h-auto object-contain"
                       />
                     </div>
-                    <p className="text-sm text-base-content/50">
+                    <p className="text-sm text-base-content/70">
                       棋盤格背景表示透明區域
                     </p>
                   </div>

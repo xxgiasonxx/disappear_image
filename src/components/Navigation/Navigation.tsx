@@ -13,7 +13,7 @@ export function Navigation() {
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <NavLink to="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-primary">vanish</span>
+            <img src="/logo.ico" alt="vanish logo" className="h-8 w-8 object-contain" />
           </NavLink>
 
           <div className="flex gap-1">

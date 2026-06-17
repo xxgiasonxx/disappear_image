@@ -26,22 +26,22 @@ function ProgressGrid({
   currentIndex: number;
 }) {
   return (
-    <div className="grid grid-cols-5 md:grid-cols-8 gap-1 md:gap-1.5 p-2 md:p-4 bg-nord-dark rounded-lg justify-center">
+    <div className="grid grid-cols-5 md:grid-cols-8 gap-1 md:gap-1.5 p-2 md:p-4 bg-base-200 rounded-lg justify-center">
       {enumResults.map((status, i) => {
         const isActive = i === currentIndex;
         const isLastPass = status === 'pass' && i === enumResults.findIndex(s => s === 'pass');
 
-        let bgClass = 'bg-nord-blue/30';
+        let bgClass = 'bg-base-300/50';
         let borderClass = '';
 
         if (status === 'pass') {
-          bgClass = isLastPass ? 'bg-green-500' : 'bg-green-500/50';
+          bgClass = isLastPass ? 'bg-success' : 'bg-success/50';
         } else if (status === 'fail') {
-          bgClass = 'bg-red-500/30';
+          bgClass = 'bg-error/30';
         }
 
         if (isActive) {
-          borderClass = 'border-2 border-nord-ice animate-pulse';
+          borderClass = 'border-2 border-primary animate-pulse';
         }
 
         return (
@@ -69,11 +69,11 @@ function ImagePreviewPanel({
         <img 
           src={dataUrl} 
           alt={label} 
-          className="max-w-full max-h-64 sm:max-h-80 md:max-h-96 lg:max-h-[28rem] xl:max-h-[32rem] rounded-lg border-2 border-nord-blue object-contain"
+          className="max-w-full max-h-64 sm:max-h-80 md:max-h-96 lg:max-h-[28rem] xl:max-h-[32rem] rounded-lg border-2 border-base-300 object-contain"
         />
       ) : (
-        <div className="w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-[28rem] lg:h-[28rem] xl:w-[32rem] xl:h-[32rem] bg-nord-blue/30 rounded-lg flex items-center justify-center">
-          <span className="text-nord-snow/50 text-lg sm:text-xl md:text-2xl">{label}</span>
+        <div className="w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 lg:w-[28rem] lg:h-[28rem] xl:w-[32rem] xl:h-[32rem] bg-base-200 rounded-lg flex items-center justify-center">
+          <span className="text-base-content/70 text-lg sm:text-xl md:text-2xl">{label}</span>
         </div>
       )}
     </div>
@@ -99,29 +99,29 @@ function ProcessingPanel({
   const currentStepName = progress ? progress.stepName : steps[0];
 
   return (
-    <div className="bg-nord-dark/50 rounded-xl p-3 sm:p-4 md:p-6">
-      <h3 className={`text-lg sm:text-xl md:text-2xl font-bold mb-2 md:mb-4 text-center ${isBruteForce ? 'text-nord-sand' : 'text-nord-ice'}`}>
+    <div className="bg-base-200 rounded-xl p-3 sm:p-4 md:p-6">
+      <h3 className={`text-lg sm:text-xl md:text-2xl font-bold mb-2 md:mb-4 text-center ${isBruteForce ? 'text-secondary' : 'text-primary'}`}>
         {title}
       </h3>
       
       <div className="mb-3 md:mb-4">
         <div className="flex justify-between text-sm sm:text-base mb-1 md:mb-2">
-          <span className="text-nord-snow font-medium">{currentStepName}</span>
-          <span className="text-nord-ice font-mono text-sm sm:text-base md:text-lg">{Math.round(progress?.progress ?? 0)}%</span>
+          <span className="text-base-content font-medium">{currentStepName}</span>
+          <span className="text-primary font-mono text-sm sm:text-base md:text-lg">{Math.round(progress?.progress ?? 0)}%</span>
         </div>
-        <div className="h-1.5 md:h-2 bg-nord-blue/30 rounded-full overflow-hidden">
+        <div className="h-1.5 md:h-2 bg-base-300 rounded-full overflow-hidden">
           <motion.div 
-            className="h-full bg-nord-ice" 
+            className="h-full bg-primary" 
             animate={{ width: `${progress?.progress ?? 0}%` }}
           />
         </div>
-        <div className="flex gap-1 md:gap-2 text-xs md:text-sm text-nord-snow/60 mt-2 md:mt-3 flex-wrap">
+        <div className="flex gap-1 md:gap-2 text-xs md:text-sm text-base-content/60 mt-2 md:mt-3 flex-wrap">
           {steps.map((step, i) => (
             <div
               key={i}
               className={`px-1 md:px-1.5 py-0.5 rounded text-xs md:text-sm ${
-                i === currentStepIndex ? 'bg-nord-ice/30 text-nord-ice' :
-                i < currentStepIndex ? 'bg-nord-sand/20 text-nord-sand' : ''
+                i === currentStepIndex ? 'bg-primary/30 text-primary' :
+                i < currentStepIndex ? 'bg-secondary/20 text-secondary' : ''
               }`}
             >
               {step}
@@ -136,14 +136,14 @@ function ProcessingPanel({
             <ProgressGrid enumResults={enumResults} currentIndex={enumIndex} />
           </div>
           {progress && progress.enumIndex >= 0 && (
-            <div className="text-center mt-2 md:mt-3 text-xs sm:text-sm md:text-base text-nord-sand font-medium">
+            <div className="text-center mt-2 md:mt-3 text-xs sm:text-sm md:text-base text-secondary font-medium">
               Trying: scale={progress.scale.toFixed(1)}, colors={progress.numColors}
             </div>
           )}
         </div>
       ) : (
         progress && (
-          <div className="text-center mb-3 md:mb-4 text-xs sm:text-sm md:text-base text-nord-sand font-medium">
+          <div className="text-center mb-3 md:mb-4 text-xs sm:text-sm md:text-base text-secondary font-medium">
             Colors: {progress.numColors} | Scale: {progress.scale.toFixed(1)}
           </div>
         )
@@ -172,9 +172,9 @@ function ResultPanel({
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: result ? 1 : 0.5, y: result ? 0 : 10 }}
-      className={`bg-nord-blue/30 rounded-xl p-4 sm:p-6 md:p-8 ${isHighlighted ? 'ring-2 ring-nord-ice' : ''}`}
+      className={`bg-base-200 rounded-xl p-4 sm:p-6 md:p-8 ${isHighlighted ? 'ring-2 ring-primary' : ''}`}
     >
-      <h4 className={`text-lg sm:text-xl font-bold mb-3 sm:mb-4 ${isHighlighted ? 'text-nord-ice' : 'text-nord-sand'}`}>
+      <h4 className={`text-lg sm:text-xl font-bold mb-3 sm:mb-4 ${isHighlighted ? 'text-primary' : 'text-secondary'}`}>
         {title}
       </h4>
       
@@ -182,23 +182,23 @@ function ResultPanel({
         <div className="space-y-3 sm:space-y-4">
           <ImagePreviewPanel dataUrl={result.previewUrl} label="Result" />
           <div className="text-sm sm:text-base space-y-2">
-            <div className="flex justify-between text-nord-snow/80">
+            <div className="flex justify-between text-base-content/80">
               <span>Processing Time:</span>
-              <span className="text-nord-ice font-mono">{result.time}ms</span>
+              <span className="text-primary font-mono">{result.time}ms</span>
             </div>
-            <div className="flex justify-between text-nord-snow/80">
+            <div className="flex justify-between text-base-content/80">
               <span>Output Size:</span>
-              <span className="text-nord-ice font-mono">{result.width}×{result.height}</span>
+              <span className="text-primary font-mono">{result.width}×{result.height}</span>
             </div>
-            <div className="flex justify-between text-nord-snow/80">
+            <div className="flex justify-between text-base-content/80">
               <span>File Size:</span>
-              <span className="text-nord-ice font-mono">{result.sizeInMB} MB</span>
+              <span className="text-primary font-mono">{result.sizeInMB} MB</span>
             </div>
           </div>
         </div>
       ) : (
         <div className="h-32 sm:h-48 flex items-center justify-center">
-          <span className="text-nord-snow/50 text-sm sm:text-base">Waiting...</span>
+          <span className="text-base-content/70 text-sm sm:text-base">Waiting...</span>
         </div>
       )}
     </motion.div>
@@ -310,22 +310,21 @@ export function AlgorithmDemo() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-nord-dark py-6 sm:py-8 md:py-12 px-2 sm:px-4">
+    <div className="min-h-screen bg-base-100 py-6 sm:py-8 md:py-12 px-2 sm:px-4">
       <div className="max-w-8xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-6 sm:mb-8 md:mb-10"
         >
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-nord-snow mb-2 sm:mb-3 md:mb-4">Algorithm Visualization</h1>
-          <p className="text-nord-snow/70 text-sm sm:text-base md:text-xl">Understanding how the two processing methods work</p>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-base-content mb-2 sm:mb-3 md:mb-4">演算法演示</h1>
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="bg-nord-blue/30 rounded-2xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8"
+          className="bg-base-200 rounded-2xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8"
         >
           <div className="flex flex-wrap justify-center gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
             {EXAMPLE_IMAGES.map(img => (
@@ -342,14 +341,14 @@ export function AlgorithmDemo() {
 
           {selectedImage && (
             <>
-{originalImageUrl && (
+              {originalImageUrl && (
                 <div className="mb-6 sm:mb-8 flex justify-center">
                   <div className="text-center">
-                    <span className="text-xs sm:text-sm md:text-base text-nord-snow/60 mb-2 md:mb-3 block">Original Image</span>
+                    <span className="text-xs sm:text-sm md:text-base text-base-content/60 mb-2 md:mb-3 block">Original Image</span>
                     <img 
                       src={originalImageUrl} 
                       alt="Original" 
-                      className="max-w-full max-h-64 sm:max-h-80 md:max-h-96 lg:max-h-[28rem] xl:max-h-[32rem] rounded-lg border-2 border-nord-blue"
+                      className="max-w-full max-h-64 sm:max-h-80 md:max-h-96 lg:max-h-[28rem] xl:max-h-[32rem] rounded-lg border-2 border-base-300"
                     />
                   </div>
                 </div>
@@ -400,13 +399,13 @@ export function AlgorithmDemo() {
 
                 <button
                   onClick={handleReset}
-                  className="btn btn-ghost text-nord-snow"
+                  className="btn btn-ghost"
                 >
                   Reset
                 </button>
 
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <span className="text-nord-snow/70 text-xs sm:text-sm">Speed:</span>
+                  <span className="text-base-content/70 text-xs sm:text-sm">Speed:</span>
                   <input
                     type="range"
                     min="0.1"
@@ -416,7 +415,7 @@ export function AlgorithmDemo() {
                     onChange={(e) => setSpeed(parseFloat(e.target.value))}
                     className="range range-primary range-xs w-20 sm:w-32"
                   />
-                  <span className="text-nord-ice font-mono w-10 sm:w-12 text-xs sm:text-sm">{speed.toFixed(1)}x</span>
+                  <span className="text-primary font-mono w-10 sm:w-12 text-xs sm:text-sm">{speed.toFixed(1)}x</span>
                 </div>
               </div>
 
@@ -443,7 +442,7 @@ export function AlgorithmDemo() {
 
           {!selectedImage && (
             <div className="text-center py-10 sm:py-16">
-              <p className="text-nord-snow/60 text-sm sm:text-base md:text-lg">Select an image above to start demo</p>
+              <p className="text-base-content/60 text-sm sm:text-base md:text-lg">Select an image above to start demo</p>
             </div>
           )}
         </motion.div>

@@ -7,24 +7,25 @@ interface FloatingButtonsProps {
 
 function SunIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5" fill="currentColor" stroke="none" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
     </svg>
   );
 }
 
 function MoonIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
     </svg>
   );
 }
 
 function ArrowUpIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 10l7-7m0 0l7 7m-7-7v18" />
     </svg>
   );
 }
@@ -56,20 +57,29 @@ export function FloatingButtons({ currentTheme, onThemeToggle }: FloatingButtons
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  const themeIconClass = isDarkMode ? 'text-yellow-400' : 'text-indigo-600';
+  const buttonBgClass = isDarkMode 
+    ? 'bg-base-200 text-base-content hover:bg-base-300' 
+    : 'bg-base-300 text-base-content hover:bg-base-200';
+
   if (isMobile) {
     return (
-      <div className="fixed top-4 right-4 z-50 flex gap-2">
+      <div className="fixed bottom-4 right-4 z-50 flex gap-2">
         <button
           onClick={onThemeToggle}
-          className="btn btn-circle btn-sm bg-base-200 text-base-content hover:bg-base-300 shadow-lg"
+          className={`btn btn-circle btn-sm ${buttonBgClass} shadow-lg`}
           aria-label={isDarkMode ? '切換到亮色模式' : '切換到暗色模式'}
         >
-          {isDarkMode ? <SunIcon className="w-4 h-4" /> : <MoonIcon className="w-4 h-4" />}
+          {isDarkMode ? (
+            <SunIcon className={`w-4 h-4 ${themeIconClass}`} />
+          ) : (
+            <MoonIcon className={`w-4 h-4 ${themeIconClass}`} />
+          )}
         </button>
         {isVisible && (
           <button
             onClick={scrollToTop}
-            className="btn btn-circle btn-sm bg-base-200 text-base-content hover:bg-base-300 shadow-lg"
+            className={`btn btn-circle btn-sm ${buttonBgClass} shadow-lg`}
             aria-label="回到頂部"
           >
             <ArrowUpIcon className="w-4 h-4" />
@@ -84,7 +94,7 @@ export function FloatingButtons({ currentTheme, onThemeToggle }: FloatingButtons
       {isVisible && (
         <button
           onClick={scrollToTop}
-          className="btn btn-circle btn-lg bg-base-200 text-base-content hover:bg-base-300 shadow-lg transition-all duration-300 hover:scale-110"
+          className={`btn btn-circle btn-lg ${buttonBgClass} shadow-lg transition-all duration-300 hover:scale-110`}
           aria-label="回到頂部"
         >
           <ArrowUpIcon className="w-5 h-5" />
@@ -92,10 +102,14 @@ export function FloatingButtons({ currentTheme, onThemeToggle }: FloatingButtons
       )}
       <button
         onClick={onThemeToggle}
-        className="btn btn-circle btn-lg bg-base-200 text-base-content hover:bg-base-300 shadow-lg transition-all duration-300 hover:scale-110"
+        className={`btn btn-circle btn-lg ${buttonBgClass} shadow-lg transition-all duration-300 hover:scale-110`}
         aria-label={isDarkMode ? '切換到亮色模式' : '切換到暗色模式'}
       >
-        {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
+        {isDarkMode ? (
+          <SunIcon className={`w-5 h-5 ${themeIconClass}`} />
+        ) : (
+          <MoonIcon className={`w-5 h-5 ${themeIconClass}`} />
+        )}
       </button>
     </div>
   );

@@ -106,7 +106,7 @@ function AlgorithmSection({
   title, 
   steps, 
   isHighlighted = false,
-  bgColor = 'bg-nord-blue/30'
+  bgColor = 'bg-base-200'
 }: { 
   title: string; 
   steps: Step[];
@@ -120,20 +120,20 @@ function AlgorithmSection({
   }, []);
 
   return (
-    <div className={`${bgColor} rounded-xl p-4 sm:p-6 ${isHighlighted ? 'ring-2 ring-nord-ice' : ''}`}>
-      <h3 className={`text-lg sm:text-xl font-bold mb-4 ${isHighlighted ? 'text-nord-ice' : 'text-nord-sand'}`}>
+    <div className={`${bgColor} rounded-xl p-4 sm:p-6 ${isHighlighted ? 'ring-2 ring-primary' : ''}`}>
+      <h3 className={`text-lg sm:text-xl font-bold mb-4 ${isHighlighted ? 'text-primary' : 'text-secondary'}`}>
         {title}
       </h3>
       <div className="space-y-3">
         {steps.map((step, index) => (
-          <div key={index} className="bg-nord-dark/50 rounded-lg overflow-hidden">
+          <div key={index} className="bg-base-300 rounded-lg overflow-hidden">
             <button
               onClick={() => toggleExpand(index)}
               className="w-full px-4 py-3 flex items-center justify-between text-left"
             >
-              <span className="text-nord-snow font-medium text-sm sm:text-base">{step.title}</span>
+              <span className="text-base-content font-medium text-sm sm:text-base">{step.title}</span>
               <svg 
-                className={`w-4 h-4 text-nord-snow/50 transition-transform duration-200 ${expandedIndex === index ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-base-content transition-transform duration-200 ${expandedIndex === index ? 'rotate-180' : ''}`}
                 fill="none" viewBox="0 0 24 24" stroke="currentColor"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -141,12 +141,12 @@ function AlgorithmSection({
             </button>
             {expandedIndex === index && (
               <div className="px-4 pb-4">
-                <p className="text-nord-snow/70 text-sm mb-3">{step.description}</p>
+                <p className="text-base-content/70 text-sm mb-3">{step.description}</p>
                 {step.details && (
                   <ul className="space-y-1.5">
                     {step.details.map((detail, i) => (
-                      <li key={i} className="text-nord-snow/60 text-xs sm:text-sm flex items-start gap-2">
-                        <span className="text-nord-ice mt-1">•</span>
+                      <li key={i} className="text-base-content/60 text-xs sm:text-sm flex items-start gap-2">
+                        <span className="text-primary mt-1">•</span>
                         <span>{detail}</span>
                       </li>
                     ))}
@@ -173,10 +173,10 @@ export function Explanation() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8 sm:mb-10 md:mb-12"
         >
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-nord-snow mb-3 sm:mb-4">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-base-content mb-3 sm:mb-4">
             演算法說明
           </h1>
-          <p className="text-nord-snow/70 text-sm sm:text-base md:text-lg max-w-2xl mx-auto">
+          <p className="text-base-content/70 text-sm sm:text-base md:text-lg max-w-2xl mx-auto">
             了解如何將圖片轉換成「西洋棋盤狀」的半透明 PNG，繞過社群平台的圖片再壓縮機制
           </p>
         </motion.div>
@@ -185,10 +185,10 @@ export function Explanation() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-nord-blue/30 rounded-xl p-4 sm:p-6 mb-6 sm:mb-8"
+          className="bg-base-200 rounded-xl p-4 sm:p-6 mb-6 sm:mb-8"
         >
-          <h2 className="text-lg sm:text-xl font-bold text-nord-ice mb-3">{OVERVIEW.title}</h2>
-          <p className="text-nord-snow/80 text-sm sm:text-base leading-relaxed">
+          <h2 className="text-lg sm:text-xl font-bold text-primary mb-3">{OVERVIEW.title}</h2>
+          <p className="text-base-content/80 text-sm sm:text-base leading-relaxed">
             {OVERVIEW.content}
           </p>
         </motion.div>
@@ -220,14 +220,14 @@ export function Explanation() {
                 title="優化解（Analytical / processImageForX）"
                 steps={ANALYTICAL_STEPS}
                 isHighlighted={true}
-                bgColor="bg-nord-ice/10"
+                bgColor="bg-primary/10"
               />
             )}
             {showBruteForce && (
               <AlgorithmSection
                 title="暴力解（Brute Force / bruteForceXProcess）"
                 steps={BRUTEFORCE_STEPS}
-                bgColor="bg-nord-sand/10"
+                bgColor="bg-secondary/10"
               />
             )}
           </div>
@@ -237,34 +237,34 @@ export function Explanation() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-nord-blue/30 rounded-xl p-4 sm:p-6"
+          className="bg-base-200 rounded-xl p-4 sm:p-6"
         >
-          <h2 className="text-lg sm:text-xl font-bold text-nord-snow mb-4">兩者比較</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-base-content mb-4">兩者比較</h2>
           <div className="space-y-3 sm:space-y-4">
             {COMPARISON.map((item, index) => (
               <div 
                 key={index} 
                 className={`rounded-lg p-3 sm:p-4 ${
-                  item.type === 'warning' ? 'bg-yellow-500/20 border border-yellow-500/30' :
-                  item.type === 'info' ? 'bg-blue-500/20 border border-blue-500/30' :
-                  'bg-nord-dark/50'
+                  item.type === 'warning' ? 'bg-warning/20 border border-warning/30' :
+                  item.type === 'info' ? 'bg-info/20 border border-info/30' :
+                  'bg-base-300'
                 }`}
               >
                 <h3 className={`font-semibold mb-2 ${
-                  item.type === 'warning' ? 'text-yellow-300' :
-                  item.type === 'info' ? 'text-blue-300' :
-                  'text-nord-snow'
+                  item.type === 'warning' ? 'text-warning' :
+                  item.type === 'info' ? 'text-info' :
+                  'text-base-content'
                 }`}>
                   {item.title}
                 </h3>
-                <p className="text-nord-snow/70 text-sm">{item.description}</p>
+                <p className="text-base-content/70 text-sm">{item.description}</p>
               </div>
             ))}
           </div>
 
-          <div className="mt-6 p-4 bg-nord-dark/50 rounded-lg">
-            <h3 className="text-nord-ice font-semibold mb-3">結論</h3>
-            <p className="text-nord-snow/70 text-sm leading-relaxed">
+          <div className="mt-6 p-4 bg-base-300 rounded-lg">
+            <h3 className="text-primary font-semibold mb-3">結論</h3>
+            <p className="text-base-content/70 text-sm leading-relaxed">
               暴力解是用 40 倍運算量去換一個跟優化解幾乎相同的結果。以目前的排序邏輯來看，
               暴力解窮舉的 40 種組合裡，大部分（尤其是中間顏色數搭配縮小解析度的組合）
               即使算出來合法也幾乎不會被真正採用，純粹是陪跑。
@@ -276,7 +276,7 @@ export function Explanation() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="mt-6 sm:mt-8 text-center text-nord-snow/50 text-xs sm:text-sm"
+          className="mt-6 sm:mt-8 text-center text-base-content/70 text-xs sm:text-sm"
         >
           <p>核心原理：利用社群平台的圖片縮放演算法特性，透過西洋棋盤格式保留視覺品質</p>
         </motion.div>
