@@ -1,21 +1,21 @@
 import UPNG from 'upng-js';
 import { loadImageToPixels } from '@lib/imageUtils';
 
-interface ColorValue {
+export interface ColorValue {
   r: number;
   g: number;
   b: number;
   count: number;
 }
 
-interface ColorBox {
+export interface ColorBox {
   colors: ColorValue[];
   minR: number; maxR: number;
   minG: number; maxG: number;
   minB: number; maxB: number;
 }
 
-function computeBoxStats(colors: ColorValue[]): ColorBox {
+export function computeBoxStats(colors: ColorValue[]): ColorBox {
   let minR = 255, minG = 255, minB = 255;
   let maxR = 0, maxG = 0, maxB = 0;
 
@@ -28,7 +28,7 @@ function computeBoxStats(colors: ColorValue[]): ColorBox {
   return { colors, minR, maxR, minG, maxG, minB, maxB };
 }
 
-function splitBoxAtMedian(box: ColorBox): [ColorBox, ColorBox] {
+export function splitBoxAtMedian(box: ColorBox): [ColorBox, ColorBox] {
   const rangeR = box.maxR - box.minR;
   const rangeG = box.maxG - box.minG;
   const rangeB = box.maxB - box.minB;
@@ -65,7 +65,7 @@ function splitBoxAtMedian(box: ColorBox): [ColorBox, ColorBox] {
   ];
 }
 
-function findBoxToSplit(boxes: ColorBox[]): number {
+export function findBoxToSplit(boxes: ColorBox[]): number {
   // 找到包含最多總像素的盒子（或最大顏色範圍的盒子）
   let bestIndex = 0;
   let bestCount = 0;
@@ -83,7 +83,7 @@ function findBoxToSplit(boxes: ColorBox[]): number {
   return bestIndex;
 }
 
-function averageColor(colors: ColorValue[]): [number, number, number] {
+export function averageColor(colors: ColorValue[]): [number, number, number] {
   let r = 0, g = 0, b = 0, totalCount = 0;
   for (const c of colors) {
     r += c.r * c.count;
@@ -98,7 +98,7 @@ function averageColor(colors: ColorValue[]): [number, number, number] {
   ];
 }
 
-function buildColorHistogram(rgba: Uint8ClampedArray): Map<number, ColorValue> {
+export function buildColorHistogram(rgba: Uint8ClampedArray): Map<number, ColorValue> {
   const histogram = new Map<number, ColorValue>();
 
   for (let i = 0; i < rgba.length; i += 4) {
@@ -118,7 +118,7 @@ function buildColorHistogram(rgba: Uint8ClampedArray): Map<number, ColorValue> {
   return histogram;
 }
 
-function medianCutQuantization(
+export function medianCutQuantization(
   rgba: Uint8ClampedArray,
   numColors: number
 ): [number, number, number][] {
@@ -145,7 +145,7 @@ function medianCutQuantization(
   return boxes.map(box => averageColor(box.colors));
 }
 
-function applyQuantization(
+export function applyQuantization(
   rgba: Uint8ClampedArray,
   palette: [number, number, number][]
 ): Uint8ClampedArray {
@@ -177,7 +177,7 @@ function applyQuantization(
   return result;
 }
 
-function buildCheckerboard(
+export function buildCheckerboard(
   quantized: Uint8ClampedArray,
   width: number,
   height: number
@@ -203,7 +203,7 @@ function buildCheckerboard(
   return output;
 }
 
-function upscaleImage(
+export function upscaleImage(
   pixels: Uint8ClampedArray,
   srcWidth: number,
   srcHeight: number,
@@ -250,7 +250,7 @@ function upscaleImage(
   return [scaled.data, newWidth, newHeight];
 }
 
-function resizeImage(
+export function resizeImage(
   pixels: Uint8ClampedArray,
   srcWidth: number,
   srcHeight: number,
@@ -288,6 +288,7 @@ export interface XProcessResult {
   height?: number;
   sizeInMB?: string;
   error?: string;
+  method?: 'analytical' | 'brute-force';
 }
 
 const MAX_SIZE = 1024 * 1024; // 1MB
@@ -340,6 +341,7 @@ export async function processImageForX(file: File): Promise<XProcessResult> {
           width: currentWidth,
           height: currentHeight,
           sizeInMB: (blob.size / (1024 * 1024)).toFixed(2),
+          method: 'analytical',
         };
       }
 

@@ -1,195 +1,212 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import type { ImageDataTyped } from '@lib/types';
-import { generateCoverImage, generateSecretImage } from '@lib/exampleGenerator';
-import { useImageProcessor } from '@/hooks/useImageProcessor';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
-export function Comparison() {
-  const [originalImage] = useState<ImageDataTyped>(() => generateCoverImage(400, 400));
-  const [secretImage] = useState<ImageDataTyped>(() => generateSecretImage(100, 100));
+interface ComparisonItem {
+  id: number;
+  original: string;
+  processed: string;
+  title: string;
+}
+
+const comparisons: ComparisonItem[] = [
+  {
+    id: 1,
+    original: '/example2.jpg',
+    processed: '/example2_algo.png',
+    title: 'Example 1',
+  },
+  {
+    id: 2,
+    original: '/example3.jpg',
+    processed: '/example3_algo.png',
+    title: 'Example 2',
+  },
+  {
+    id: 3,
+    original: '/example.jpeg',
+    processed: '/example_algo.png',
+    title: 'Example 3',
+  },
+];
+
+function ComparisonSlider({
+  original,
+  processed,
+  label,
+}: {
+  original: string;
+  processed: string;
+  label: string;
+}) {
   const [sliderPosition, setSliderPosition] = useState(50);
+  const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { processImage, status, progress, result, elapsedTime, cancelProcessing } = useImageProcessor();
-
-  // Convert original to data URL for display
-  const originalDataUrl = useMemo(() => {
-    if (!originalImage) return '';
-    const canvas = document.createElement('canvas');
-    canvas.width = originalImage.width;
-    canvas.height = originalImage.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return '';
-      const imageData = new ImageData(new Uint8ClampedArray(originalImage.pixels), originalImage.width, originalImage.height);
-    ctx.putImageData(imageData, 0, 0);
-    return canvas.toDataURL();
-  }, [originalImage]);
-
-  const handleSliderChange = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const updateSliderPosition = useCallback((clientX: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
+    const x = clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
     setSliderPosition(percentage);
   }, []);
 
-  const handleGenerate = useCallback(() => {
-    processImage('analytical', originalImage, secretImage, {
-      interpolationKernel: 'bilinear',
-      targetWidth: 100,
-      targetHeight: 100,
-      strength: 0.8,
-      tileSize: 64,
-      overlap: 8,
-    });
-  }, [processImage, originalImage, secretImage]);
-
-  // Canvas drawing for the full result
-  const resultCanvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (!resultCanvasRef.current || !result) return;
-    const canvas = resultCanvasRef.current;
-    canvas.width = result.width;
-    canvas.height = result.height;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const imageData = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height);
-      ctx.putImageData(imageData, 0, 0);
-    }
-  }, [result]);
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      updateSliderPosition(e.clientX);
+    };
 
-  // Canvas drawing for the slider (original part)
-  const sliderOriginalCanvasRef = useRef<HTMLCanvasElement>(null);
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, updateSliderPosition]);
+
   useEffect(() => {
-    if (!sliderOriginalCanvasRef.current || !originalImage) return;
-    const canvas = sliderOriginalCanvasRef.current;
-    canvas.width = originalImage.width;
-    canvas.height = originalImage.height;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-    const imageData = new ImageData(new Uint8ClampedArray(originalImage.pixels), originalImage.width, originalImage.height);
-      ctx.putImageData(imageData, 0, 0);
-    }
-  }, [originalImage]);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      updateSliderPosition(e.touches[0].clientX);
+    };
 
-  // Canvas drawing for the slider (processed part)
-  const sliderProcessedCanvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!sliderProcessedCanvasRef.current || !result) return;
-    const canvas = sliderProcessedCanvasRef.current;
-    canvas.width = result.width;
-    canvas.height = result.height;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const imageData = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height);
-      ctx.putImageData(imageData, 0, 0);
-    }
-  }, [result]);
+    const handleTouchEnd = () => {
+      setIsDragging(false);
+    };
 
-  // Slider canvas clip path style
-  const sliderStyle: React.CSSProperties = {
-    clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`,
-  };
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isDragging, updateSliderPosition]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    updateSliderPosition(e.clientX);
+  }, [updateSliderPosition]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    setIsDragging(true);
+    updateSliderPosition(e.touches[0].clientX);
+  }, [updateSliderPosition]);
 
   return (
-    <div className="min-h-screen p-8">
-      <h1 className="text-2xl font-bold mb-6">Comparison</h1>
-
-      <div className="mb-8 space-y-4">
-        <button
-          onClick={handleGenerate}
-          disabled={status === 'processing'}
-          className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          {status === 'processing' ? 'Processing...' : 'Process Image'}
-        </button>
-        {status === 'processing' && (
-          <button
-            onClick={cancelProcessing}
-            className="px-6 py-3 bg-red-600 text-white rounded hover:bg-red-700 ml-4"
-          >
-            Cancel
-          </button>
+    <motion.div 
+      className="mb-8 sm:mb-12 last:mb-0"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
+    >
+      <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-base-content">{label}</h3>
+      <div
+        ref={containerRef}
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
+        className={`relative w-full cursor-ew-resize border-2 border-base-300 rounded-lg overflow-hidden select-none bg-base-300 transition-all duration-200 ${
+          isDragging ? 'border-primary scale-[1.01]' : 'hover:border-primary/50'
+        }`}
+        style={{ aspectRatio: '1', maxWidth: '100%' }}
+      >
+        <img
+          src={processed}
+          alt="Processed"
+          className="absolute inset-0 w-full h-full object-cover"
+          draggable={false}
+        />
+        {original && (
+          <img
+            src={original}
+            alt="Original"
+            className="absolute inset-0 w-full h-full object-cover"
+            draggable={false}
+            style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
+          />
+        )}
+        {original && (
+          <>
+            <div
+              className="absolute top-0 bottom-0 cursor-ew-resize flex items-center justify-center"
+              style={{ left: `${sliderPosition}%`, transform: 'translateX(-50%)', zIndex: 10 }}
+            >
+              <div className="w-0.5 h-full bg-base-100 shadow-lg" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-primary rounded-full shadow-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-primary-content" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M18 8L22 12L18 16M6 8L2 12L6 16" />
+                </svg>
+              </div>
+            </div>
+            <div className="absolute bottom-3 left-3 px-3 py-1.5 bg-base-100/80 rounded-lg text-base-content text-xs sm:text-sm font-medium backdrop-blur-sm">
+              Original
+            </div>
+            <div className="absolute bottom-3 right-3 px-3 py-1.5 bg-base-100/80 rounded-lg text-base-content text-xs sm:text-sm font-medium backdrop-blur-sm">
+              Processed
+            </div>
+          </>
         )}
       </div>
-
-      {status === 'processing' && (
-        <div className="mb-6">
-          <div className="w-full bg-gray-200 rounded-full h-4 dark:bg-gray-700">
-            <div
-              className="bg-blue-600 h-4 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-          <p className="text-sm text-gray-600 mt-2">Progress: {progress}%</p>
-        </div>
+      {original && (
+        <p className="text-xs sm:text-sm text-base-content/70 mt-2 text-center transition-opacity duration-300">
+          Drag to compare before/after
+        </p>
       )}
+    </motion.div>
+  );
+}
 
-      {result && status === 'done' && (
-        <div className="space-y-8">
-          <div className="text-green-600 font-medium">
-            Done! Elapsed time: {elapsedTime.toFixed(2)}ms
-          </div>
+export function Comparison() {
+  return (
+    <div className="min-h-screen p-4 sm:p-6 md:p-8">
+      <motion.h1 
+        className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6 sm:mb-8 md:mb-10 text-base-content text-center"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+      >
+        對比圖片範例
+      </motion.h1>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Before (Original)</h2>
-              <img
-                src={originalDataUrl}
-                alt="Original"
-                className="w-full rounded-lg shadow-lg"
-              />
-            </div>
-
-            <div>
-              <h2 className="text-xl font-semibold mb-4">After (Processed)</h2>
-              <canvas
-                ref={resultCanvasRef}
-                className="w-full rounded-lg shadow-lg max-w-full"
-              />
-            </div>
-          </div>
-
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Side-by-Side Slider</h2>
-            <div
-              ref={containerRef}
-              onMouseMove={handleSliderChange}
-              onClick={handleSliderChange}
-              className="relative w-full cursor-ew-resize border rounded-lg overflow-hidden"
-              style={{ aspectRatio: '1', maxWidth: '600px' }}
+      <div className="max-w-4xl mx-auto">
+        <div className="flex flex-col gap-6 sm:gap-8">
+          {comparisons.map((item, index) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: index * 0.1, ease: 'easeOut' }}
             >
-              <canvas
-                ref={sliderOriginalCanvasRef}
-                style={{ display: 'none' }}
+              <ComparisonSlider
+                original={item.original}
+                processed={item.processed}
+                label={item.title}
               />
-              <img
-                src={originalDataUrl}
-                alt="Original"
-                className="absolute inset-0 w-full h-full object-cover"
-                draggable={false}
-              />
-              {result && (
-                <canvas
-                  ref={sliderProcessedCanvasRef}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  style={sliderStyle}
-                />
-              )}
-              <div
-                className="absolute inset-y-0 w-px bg-white"
-                style={{ left: `${sliderPosition}%`, boxShadow: '0 0 4px rgba(0,0,0,0.5)' }}
-              />
-            </div>
-            <p className="text-sm text-gray-500 mt-2">Click or drag on image to adjust slider</p>
-          </div>
+            </motion.div>
+          ))}
         </div>
-      )}
 
-      {status === 'error' && (
-        <div className="mt-4 text-red-600">
-          Error processing image. Please try again.
-        </div>
-      )}
+        <motion.div 
+          className="mt-10 sm:mt-12 md:mt-16 p-4 sm:p-6 bg-base-200 rounded-xl border border-base-300"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.4, ease: 'easeOut' }}
+        >
+          <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-2 sm:mb-3 text-base-content">
+            使用方式
+          </h2>
+          <p className="text-sm sm:text-base text-base-content/70 leading-relaxed">
+            按住圖片並左右拖動來比較處理前後的差異。
+            拉桿左側顯示原始圖片，右側顯示處理後的結果。
+            注意隱藏的圖案只有在觀看原始高解析度時才能看到。
+          </p>
+        </motion.div>
+      </div>
     </div>
   );
 }
