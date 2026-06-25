@@ -1,31 +1,4 @@
-import type { InterpolationKernel, PlatformConfig } from '@lib/types';
-
-export function calculateTargetSize(
-  srcWidth: number,
-  srcHeight: number,
-  config: PlatformConfig
-): { width: number; height: number } {
-  if (config.strategy === 'bounding-box') {
-    const scale = Math.min(
-      (config.maxWidth || Infinity) / srcWidth,
-      (config.maxHeight || Infinity) / srcHeight
-    );
-    if (scale >= 1) return { width: srcWidth, height: srcHeight };
-    return {
-      width: Math.round(srcWidth * scale),
-      height: Math.round(srcHeight * scale),
-    };
-  } else {
-    const longEdge = Math.max(srcWidth, srcHeight);
-    const maxEdge = config.maxEdge || Infinity;
-    if (longEdge <= maxEdge) return { width: srcWidth, height: srcHeight };
-    const scale = maxEdge / longEdge;
-    return {
-      width: Math.round(srcWidth * scale),
-      height: Math.round(srcHeight * scale),
-    };
-  }
-}
+import type { InterpolationKernel } from '@lib/types';
 
 export function bilinearKernel(x: number): number {
   const absX = Math.abs(x);
@@ -74,46 +47,6 @@ export function getKernelRadius(kernel: InterpolationKernel): number {
     default:
       return 1;
   }
-}
-
-export function getScaleMatrix(
-  srcWidth: number,
-  srcHeight: number,
-  dstWidth: number,
-  dstHeight: number
-): Float32Array {
-  const scaleX = srcWidth / dstWidth;
-  const scaleY = srcHeight / dstHeight;
-  const matrix = new Float32Array(4);
-  matrix[0] = scaleX;
-  matrix[1] = scaleY;
-  matrix[2] = 1 / scaleX;
-  matrix[3] = 1 / scaleY;
-  return matrix;
-}
-
-export function getKernelWeights(
-  _srcPos: number,
-  dstPos: number,
-  scale: number,
-  kernel: InterpolationKernel
-): { index: number; weight: number }[] {
-  const kernelFn = getKernelFunction(kernel);
-  const weights: { index: number; weight: number }[] = [];
-  const radius = getKernelRadius(kernel);
-  const center = dstPos * scale;
-  const start = Math.floor(center - radius);
-  const end = Math.ceil(center + radius);
-
-  for (let i = start; i <= end; i++) {
-    const distance = Math.abs(i - center) / scale;
-    const weight = kernelFn(distance);
-    if (weight !== 0) {
-      weights.push({ index: i, weight });
-    }
-  }
-
-  return weights;
 }
 
 export function downsampleImage(
@@ -181,33 +114,4 @@ export function downsampleImage(
   }
 
   return { width: dstWidth, height: dstHeight, pixels: dstPixels };
-}
-
-export function bilinearInterpolate(
-  srcPixels: Uint8ClampedArray,
-  srcWidth: number,
-  srcHeight: number,
-  x: number,
-  y: number
-): number[] {
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const x1 = Math.min(x0 + 1, srcWidth - 1);
-  const y1 = Math.min(y0 + 1, srcHeight - 1);
-
-  const fx = x - x0;
-  const fy = y - y0;
-
-  const colors = [];
-  for (let c = 0; c < 4; c++) {
-    const c00 = srcPixels[((y0 * srcWidth) + x0) * 4 + c];
-    const c10 = srcPixels[((y0 * srcWidth) + x1) * 4 + c];
-    const c01 = srcPixels[((y1 * srcWidth) + x0) * 4 + c];
-    const c11 = srcPixels[((y1 * srcWidth) + x1) * 4 + c];
-
-    const top = c00 * (1 - fx) + c10 * fx;
-    const bottom = c01 * (1 - fx) + c11 * fx;
-    colors.push(Math.round(top * (1 - fy) + bottom * fy));
-  }
-  return colors;
 }
