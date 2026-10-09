@@ -22,6 +22,21 @@ interface CalculatedCandidate {
 
 const MAX_SIZE = 1024 * 1024;
 
+export const SCALE_OPTIONS = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
+export const COLOR_OPTIONS = [32, 16, 8, 4, 2];
+
+// 與優化解相同的優先順序：先用原解析度試 32→2 色，不行才降解析度（只用 2 色）
+export function getCandidatePriority(scale: number, numColors: number): number {
+  if (scale === 1.0) {
+    const colorIndex = COLOR_OPTIONS.indexOf(numColors);
+    return colorIndex === -1 ? Infinity : colorIndex;
+  }
+  if (numColors === 2) {
+    return 4 + Math.round((1.0 - scale) * 10);
+  }
+  return Infinity;
+}
+
 export async function bruteForceXProcess(file: File): Promise<XProcessResult> {
   try {
     const imageData = await loadImageToPixels(file);
@@ -33,12 +48,9 @@ export async function bruteForceXProcess(file: File): Promise<XProcessResult> {
         ? upscaleImage(pixels, width, height, MIN_SIZE)
         : [new Uint8ClampedArray(pixels), width, height];
 
-    const scaleOptions = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
-    const colorOptions = [32, 16, 8, 4, 2];
-
     const allCalculatedResults: CalculatedCandidate[] = [];
 
-    for (const scale of scaleOptions) {
+    for (const scale of SCALE_OPTIONS) {
       const currentWidth = Math.round(upscaledWidth * scale);
       const currentHeight = Math.round(upscaledHeight * scale);
 
@@ -46,7 +58,7 @@ export async function bruteForceXProcess(file: File): Promise<XProcessResult> {
         ? new Uint8ClampedArray(upscaledPixels)
         : resizeImage(new Uint8ClampedArray(upscaledPixels), upscaledWidth, upscaledHeight, scale)[0];
 
-      for (const numColors of colorOptions) {
+      for (const numColors of COLOR_OPTIONS) {
         const palette = medianCutQuantization(currentPixels, numColors);
         const quantized = applyQuantization(currentPixels, palette);
         const checkerboard = buildCheckerboard(quantized, currentWidth, currentHeight);
@@ -60,19 +72,7 @@ export async function bruteForceXProcess(file: File): Promise<XProcessResult> {
 
         const blob = new Blob([pngBuffer], { type: 'image/png' });
 
-        let originalOrderIndex = Infinity;
-        if (scale === 1.0) {
-          if (numColors === 32) originalOrderIndex = 0;
-          else if (numColors === 16) originalOrderIndex = 1;
-          else if (numColors === 8) originalOrderIndex = 2;
-          else if (numColors === 4) originalOrderIndex = 3;
-          else if (numColors === 2) originalOrderIndex = 4;
-        } else {
-          if (numColors === 2) {
-            const scaleStep = Math.round((1.0 - scale) * 10);
-            originalOrderIndex = 4 + scaleStep;
-          }
-        }
+        const originalOrderIndex = getCandidatePriority(scale, numColors);
 
         if (blob.size <= MAX_SIZE) {
           allCalculatedResults.push({

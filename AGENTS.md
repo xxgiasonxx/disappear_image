@@ -251,7 +251,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 #### 2. 計算效率
 
-- **處理時間**：記錄兩種方法從上傳到輸出所需的毫秒數
+- **運算時間**：記錄兩種方法實際運算所需的毫秒數（不含動畫延遲）
 - **PNG 編碼次數**：優化解 1 ~ 11 次，暴力解固定 40 次
 
 #### 3. 畫質保留

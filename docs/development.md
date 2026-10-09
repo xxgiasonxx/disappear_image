@@ -159,13 +159,12 @@ npm run test:coverage
 ```
 test/
 ├── lib/
-│   ├── interpolation.test.ts
-│   ├── metrics.test.ts
-│   ├── solver.test.ts
-│   ├── steganography.test.ts
+│   ├── imageUtils.test.ts
+│   ├── interpolation.test.ts    # 舊版縮放隱寫實驗
+│   ├── steganography.test.ts    # 舊版縮放隱寫實驗
 │   ├── types.test.ts
 │   ├── validation.test.ts
-│   └── imageUtils.test.ts
+│   └── xProcessor.test.ts       # 量化、棋盤格化、縮放、暴力解優先順序
 ├── setup.ts
 └── index.ts
 ```

@@ -180,10 +180,10 @@ function ResultPanel({
       
       {result ? (
         <div className="space-y-3 sm:space-y-4">
-          <ImagePreviewPanel dataUrl={result.previewUrl} label="Result" />
+          <ImagePreviewPanel dataUrl={result.previewUrl} label={result.success ? 'Result' : '無法壓縮至 1MB 以內'} />
           <div className="text-sm sm:text-base space-y-2">
             <div className="flex justify-between text-base-content/80">
-              <span>Processing Time:</span>
+              <span>Compute Time:</span>
               <span className="text-primary font-mono">{result.time}ms</span>
             </div>
             <div className="flex justify-between text-base-content/80">
@@ -219,14 +219,15 @@ export function AlgorithmDemo() {
   const [bruteForceResult, setBruteForceResult] = useState<ProcessingResult | null>(null);
 
   const isPausedRef = useRef({ value: false });
-  const speedRef = useRef(1);
+  const speedRef = useRef({ value: 1 });
   const processingRef = useRef<{ analytical: AbortController | null; bruteForce: AbortController | null }>({
     analytical: null,
     bruteForce: null,
   });
 
+  // 用物件傳給處理器，播放中調整速度也會立即生效
   useEffect(() => {
-    speedRef.current = speed;
+    speedRef.current.value = speed;
   }, [speed]);
 
   useEffect(() => {
@@ -433,12 +434,12 @@ export function AlgorithmDemo() {
                   <ResultPanel 
                     title="Analytical Result" 
                     result={analyticalResult}
-                    isHighlighted={analyticalResult ? parseFloat(analyticalResult.sizeInMB) <= 1 : false}
+                    isHighlighted={analyticalResult?.success ?? false}
                   />
                   <ResultPanel 
                     title="Brute Force Result" 
                     result={bruteForceResult}
-                    isHighlighted={bruteForceResult ? parseFloat(bruteForceResult.sizeInMB) <= 1 : false}
+                    isHighlighted={bruteForceResult?.success ?? false}
                   />
                 </motion.div>
               )}

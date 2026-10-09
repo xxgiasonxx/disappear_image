@@ -53,7 +53,7 @@ interface ProcessingResult {
   width: number;
   height: number;
   sizeInMB: string;
-  time: number;                                   // 處理時間（ms）
+  time: number;                                   // 實際運算時間（ms），不含動畫延遲與暫停
   method: 'analytical' | 'brute-force';
   steps: ProcessingStep[];
 }
@@ -88,23 +88,29 @@ function bruteForceXProcess(file: File): Promise<XProcessResult>
 
 ### processImageAnalyticalWithProgress / processImageBruteForceWithProgress
 
-與上面兩個函式相同的流程，但每個步驟都會回報進度，供演算法演示頁播放動畫。
+與上面兩個函式相同的流程與選擇邏輯，但每個步驟都會回報進度，供演算法演示頁播放動畫。
 
 ```typescript
 function processImageAnalyticalWithProgress(
   imageUrl: string,
   onProgress: (progress: ProcessingProgress) => void,
   isPaused: { value: boolean },
-  speedMultiplier: number
+  speed: { value: number },
+  signal?: AbortSignal
 ): Promise<ProcessingResult>
 
 function processImageBruteForceWithProgress(
   imageUrl: string,
   onProgress: (progress: ProcessingProgress) => void,
   isPaused: { value: boolean },
-  speedMultiplier: number
+  speed: { value: number },
+  signal?: AbortSignal
 ): Promise<ProcessingResult>
 ```
+
+- `isPaused`、`speed` 以物件傳入，處理途中修改 `.value` 會立即生效
+- `signal` 中止後，函式會以 `AbortError` 結束
+- 找不到 ≤ 1MB 的組合時回傳 `success: false`、`previewUrl: null`
 
 ---
 

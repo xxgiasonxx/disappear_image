@@ -6,6 +6,11 @@ import {
   upscaleImage,
   resizeImage,
 } from '@lib/xProcessor';
+import {
+  SCALE_OPTIONS,
+  COLOR_OPTIONS,
+  getCandidatePriority,
+} from '@lib/bruteForceXProcessor';
 import UPNG from 'upng-js';
 
 export interface ProcessingStep {
@@ -34,14 +39,14 @@ export interface ProcessingResult {
   width: number;
   height: number;
   sizeInMB: string;
-  time: number;
+  time: number; // 實際運算時間（ms），不含動畫延遲與暫停
   method: 'analytical' | 'brute-force';
   steps: ProcessingStep[];
 }
 
-const SCALE_OPTIONS = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3];
-const COLOR_OPTIONS = [32, 16, 8, 4, 2];
+const MIN_SIZE = 1000;
 const MAX_SIZE = 1024 * 1024;
+const TOTAL_COMBINATIONS = SCALE_OPTIONS.length * COLOR_OPTIONS.length;
 // 對應 AlgorithmDemo 的 BRUTE_FORCE_STEPS：['載入圖片', '尺寸調整', '枚舉組合', '嘗試組合', '選擇結果', '完成']
 const BRUTE_FORCE_SELECT_STEP = 4;
 const BRUTE_FORCE_COMPLETE_STEP = 5;
@@ -64,20 +69,60 @@ async function waitIfPaused(isPaused: { value: boolean }, signal?: AbortSignal):
   throwIfAborted(signal);
 }
 
+// 只累計實際運算的時間，讓兩種方法的處理時間可以公平比較
+function createComputeTimer() {
+  let elapsed = 0;
+  return {
+    run<T>(fn: () => T): T {
+      const start = performance.now();
+      try {
+        return fn();
+      } finally {
+        elapsed += performance.now() - start;
+      }
+    },
+    get ms(): number {
+      return Math.round(elapsed);
+    },
+  };
+}
+
+function upscaleIfNeeded(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number
+): [Uint8ClampedArray, number, number] {
+  return (width < MIN_SIZE || height < MIN_SIZE)
+    ? upscaleImage(pixels, width, height, MIN_SIZE)
+    : [new Uint8ClampedArray(pixels), width, height];
+}
+
+function encodeCheckerboardPng(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  numColors: number
+): Blob {
+  const palette = medianCutQuantization(pixels, numColors);
+  const quantized = applyQuantization(pixels, palette);
+  const checkerboard = buildCheckerboard(quantized, width, height);
+  const pngBuffer = UPNG.encode([checkerboard.buffer as ArrayBuffer], width, height, 0);
+  return new Blob([pngBuffer], { type: 'image/png' });
+}
+
 export async function processImageAnalyticalWithProgress(
   imageUrl: string,
   onProgress: (progress: ProcessingProgress) => void,
   isPaused: { value: boolean },
-  speedMultiplier: number,
+  speed: { value: number },
   signal?: AbortSignal
 ): Promise<ProcessingResult> {
-  const imageData = await loadImageUrl(imageUrl);
-  const { pixels, width, height } = imageData;
-  const MIN_SIZE = 1000;
+  const { pixels, width, height } = await loadImageUrl(imageUrl);
   const TOTAL_STEPS = 7;
 
   const steps: ProcessingStep[] = [];
   const startTime = Date.now();
+  const timer = createComputeTimer();
   let numColors = 32;
   let scale = 1.0;
   let stepIndex = 0;
@@ -104,13 +149,10 @@ export async function processImageAnalyticalWithProgress(
 
   await waitIfPaused(isPaused, signal);
   reportProgress('Load Image', null);
-  await delay(1000 / speedMultiplier);
+  await delay(1000 / speed.value);
 
   // 只放大一次；之後縮小解析度都以放大後的圖為基準，與 processImageForX 一致
-  const [basePixels, baseWidth, baseHeight] =
-    (width < MIN_SIZE || height < MIN_SIZE)
-      ? upscaleImage(pixels, width, height, MIN_SIZE)
-      : [new Uint8ClampedArray(pixels), width, height];
+  const [basePixels, baseWidth, baseHeight] = timer.run(() => upscaleIfNeeded(pixels, width, height));
 
   let currentPixels: Uint8ClampedArray = basePixels;
   let currentWidth = baseWidth;
@@ -129,13 +171,15 @@ export async function processImageAnalyticalWithProgress(
       timestamp: Date.now() - startTime,
     });
     reportProgress('Resize', resizedDataUrl);
-    await delay(1000 / speedMultiplier);
+    await delay(1000 / speed.value);
     stepIndex++;
 
     await waitIfPaused(isPaused, signal);
 
-    const palette = medianCutQuantization(currentPixels, numColors);
-    const quantized = applyQuantization(currentPixels, palette);
+    const quantized = timer.run(() => {
+      const palette = medianCutQuantization(currentPixels, numColors);
+      return applyQuantization(currentPixels, palette);
+    });
     const quantizedDataUrl = pixelsToDataUrl(quantized, currentWidth, currentHeight);
     steps.push({
       stepName: 'Quantize',
@@ -144,12 +188,12 @@ export async function processImageAnalyticalWithProgress(
       timestamp: Date.now() - startTime,
     });
     reportProgress('Quantize', quantizedDataUrl);
-    await delay(1000 / speedMultiplier);
+    await delay(1000 / speed.value);
     stepIndex++;
 
     await waitIfPaused(isPaused, signal);
 
-    const checkerboard = buildCheckerboard(quantized, currentWidth, currentHeight);
+    const checkerboard = timer.run(() => buildCheckerboard(quantized, currentWidth, currentHeight));
     const checkerboardDataUrl = pixelsToDataUrl(checkerboard, currentWidth, currentHeight);
     steps.push({
       stepName: 'Checkerboard',
@@ -158,19 +202,21 @@ export async function processImageAnalyticalWithProgress(
       timestamp: Date.now() - startTime,
     });
     reportProgress('Checkerboard', checkerboardDataUrl);
-    await delay(1000 / speedMultiplier);
+    await delay(1000 / speed.value);
     stepIndex++;
 
     await waitIfPaused(isPaused, signal);
 
     reportProgress('Encode PNG', checkerboardDataUrl);
-    await delay(500 / speedMultiplier);
+    await delay(500 / speed.value);
     stepIndex++;
 
     await waitIfPaused(isPaused, signal);
 
-    const pngBuffer = UPNG.encode([checkerboard.buffer as ArrayBuffer], currentWidth, currentHeight, 0);
-    const blob = new Blob([pngBuffer], { type: 'image/png' });
+    const blob = timer.run(() => {
+      const pngBuffer = UPNG.encode([checkerboard.buffer as ArrayBuffer], currentWidth, currentHeight, 0);
+      return new Blob([pngBuffer], { type: 'image/png' });
+    });
 
     steps.push({
       stepName: 'Size Check',
@@ -201,13 +247,15 @@ export async function processImageAnalyticalWithProgress(
           width: currentWidth,
           height: currentHeight,
           sizeInMB: (blob.size / (1024 * 1024)).toFixed(2),
-          time: Date.now() - startTime,
+          time: timer.ms,
           method: 'analytical',
           steps,
         };
       }
 
-      [currentPixels, currentWidth, currentHeight] = resizeImage(basePixels, baseWidth, baseHeight, scale);
+      [currentPixels, currentWidth, currentHeight] = timer.run(() =>
+        resizeImage(basePixels, baseWidth, baseHeight, scale)
+      );
       steps.push({
         stepName: `Scale: ${scale.toFixed(1)}`,
         stepIndex: stepIndex,
@@ -218,7 +266,7 @@ export async function processImageAnalyticalWithProgress(
     }
 
     stepIndex++;
-    await delay(1000 / speedMultiplier);
+    await delay(1000 / speed.value);
     throwIfAborted(signal);
 
     const finalPreviewUrl = URL.createObjectURL(blob);
@@ -236,32 +284,37 @@ export async function processImageAnalyticalWithProgress(
       width: currentWidth,
       height: currentHeight,
       sizeInMB: (blob.size / (1024 * 1024)).toFixed(2),
-      time: Date.now() - startTime,
+      time: timer.ms,
       method: 'analytical',
       steps,
     };
   }
 }
 
+interface BruteForceCandidate {
+  index: number;
+  priority: number;
+  blob: Blob;
+  width: number;
+  height: number;
+}
+
+// 與 bruteForceXProcess 相同：窮舉全部組合，保留 ≤ 1MB 的候選，再依優先順序挑選
 export async function processImageBruteForceWithProgress(
   imageUrl: string,
   onProgress: (progress: ProcessingProgress) => void,
   isPaused: { value: boolean },
-  speedMultiplier: number,
+  speed: { value: number },
   signal?: AbortSignal
 ): Promise<ProcessingResult> {
-  const imageData = await loadImageUrl(imageUrl);
-  const { pixels, width, height } = imageData;
-  const MIN_SIZE = 1000;
+  const { pixels, width, height } = await loadImageUrl(imageUrl);
+  const TOTAL_STEPS = 6;
 
-  let currentPixels = new Uint8ClampedArray(pixels.buffer as ArrayBuffer);
-  let currentWidth = width;
-  let currentHeight = height;
-  const needUpscale = width < MIN_SIZE || height < MIN_SIZE;
   const steps: ProcessingStep[] = [];
   const startTime = Date.now();
+  const timer = createComputeTimer();
   let stepIndex = 0;
-  const enumResults = Array(40).fill('pending') as ('pending' | 'pass' | 'fail')[];
+  const enumResults = Array(TOTAL_COMBINATIONS).fill('pending') as ('pending' | 'pass' | 'fail')[];
 
   const reportProgress = (
     stepName: string,
@@ -271,53 +324,27 @@ export async function processImageBruteForceWithProgress(
     onProgress({
       method: 'brute-force',
       currentStep: stepIndex,
-      totalSteps: 6,
+      totalSteps: TOTAL_STEPS,
       stepName,
       numColors: COLOR_OPTIONS[0],
       scale: SCALE_OPTIONS[0],
       enumIndex: -1,
       enumResults: [...enumResults],
       processedPixels,
-      progress: (stepIndex / 6) * 100,
+      progress: (stepIndex / TOTAL_STEPS) * 100,
       ...additionalProgress,
     });
   };
 
   await waitIfPaused(isPaused, signal);
-
   reportProgress('Load Image', null);
-  await delay(1000 / speedMultiplier);
+  await delay(1000 / speed.value);
   stepIndex++;
 
   await waitIfPaused(isPaused, signal);
 
-  if (needUpscale) {
-    const aspectRatio = currentHeight / currentWidth;
-    currentWidth = MIN_SIZE;
-    currentHeight = Math.round(MIN_SIZE * aspectRatio);
-    if (currentHeight < MIN_SIZE) {
-      currentHeight = MIN_SIZE;
-      currentWidth = Math.round(MIN_SIZE / aspectRatio);
-    }
-
-    const tempCanvas = new OffscreenCanvas(currentWidth, currentHeight);
-    const tempCtx = tempCanvas.getContext('2d');
-    if (tempCtx) {
-      const srcCanvas = new OffscreenCanvas(width, height);
-      const srcCtx = srcCanvas.getContext('2d');
-      if (srcCtx) {
-        const imgData = new ImageData(new Uint8ClampedArray(pixels), width, height);
-        srcCtx.putImageData(imgData, 0, 0);
-        tempCtx.imageSmoothingEnabled = true;
-        tempCtx.imageSmoothingQuality = 'high';
-        tempCtx.drawImage(srcCanvas, 0, 0, currentWidth, currentHeight);
-        const result = tempCtx.getImageData(0, 0, currentWidth, currentHeight);
-        currentPixels = new Uint8ClampedArray(result.data.buffer as ArrayBuffer);
-      }
-    }
-  }
-
-  const upscaledDataUrl = pixelsToDataUrl(currentPixels, currentWidth, currentHeight);
+  const [basePixels, baseWidth, baseHeight] = timer.run(() => upscaleIfNeeded(pixels, width, height));
+  const upscaledDataUrl = pixelsToDataUrl(basePixels, baseWidth, baseHeight);
   steps.push({
     stepName: 'Resize',
     stepIndex: stepIndex,
@@ -325,111 +352,103 @@ export async function processImageBruteForceWithProgress(
     timestamp: Date.now() - startTime,
   });
   reportProgress('Resize', upscaledDataUrl);
-  await delay(1000 / speedMultiplier);
+  await delay(1000 / speed.value);
   stepIndex++;
 
   await waitIfPaused(isPaused, signal);
 
   reportProgress('Enum Combinations', upscaledDataUrl);
-  await delay(500 / speedMultiplier);
+  await delay(500 / speed.value);
   stepIndex++;
 
   await waitIfPaused(isPaused, signal);
 
   reportProgress('Try Combinations', upscaledDataUrl);
 
-  let foundPreviewUrl: string | null = null;
-  let foundWidth = currentWidth;
-  let foundHeight = currentHeight;
-  let foundSizeMB = '0';
-  let foundIndex = -1;
+  const candidates: BruteForceCandidate[] = [];
 
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < TOTAL_COMBINATIONS; i++) {
     await waitIfPaused(isPaused, signal);
 
-    const scale = SCALE_OPTIONS[Math.floor(i / 5)];
-    const numColors = COLOR_OPTIONS[i % 5];
+    const scale = SCALE_OPTIONS[Math.floor(i / COLOR_OPTIONS.length)];
+    const numColors = COLOR_OPTIONS[i % COLOR_OPTIONS.length];
 
-    enumResults[i] = 'fail';
-    reportProgress('Try Combinations', null, {
-      enumIndex: i,
-      numColors,
-      scale,
-      enumResults: [...enumResults],
+    reportProgress('Try Combinations', null, { enumIndex: i, numColors, scale });
+
+    const { blob, workWidth, workHeight } = timer.run(() => {
+      const [workPixels, workWidth, workHeight] = scale === 1.0
+        ? [basePixels, baseWidth, baseHeight]
+        : resizeImage(basePixels, baseWidth, baseHeight, scale);
+      return {
+        blob: encodeCheckerboardPng(workPixels, workWidth, workHeight, numColors),
+        workWidth,
+        workHeight,
+      };
     });
-
-    let workPixels = currentPixels;
-    let workWidth = currentWidth;
-    let workHeight = currentHeight;
-
-    if (scale < 1.0) {
-      const resized = resizeImage(
-        new Uint8ClampedArray(currentPixels.buffer as ArrayBuffer),
-        width,
-        height,
-        scale
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      workPixels = resized[0] as any;
-      workWidth = resized[1];
-      workHeight = resized[2];
-    }
-
-    const palette = medianCutQuantization(workPixels, numColors);
-    const quantized = applyQuantization(workPixels, palette);
-    const checkerboard = buildCheckerboard(quantized, workWidth, workHeight);
-
-    const pngBuffer = UPNG.encode([checkerboard.buffer as ArrayBuffer], workWidth, workHeight, 0);
-    const blob = new Blob([pngBuffer], { type: 'image/png' });
 
     if (blob.size <= MAX_SIZE) {
       enumResults[i] = 'pass';
-      foundPreviewUrl = URL.createObjectURL(blob);
-      foundWidth = workWidth;
-      foundHeight = workHeight;
-      foundSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
-      foundIndex = i;
-
-      stepIndex = BRUTE_FORCE_SELECT_STEP;
-      reportProgress('Select Result', foundPreviewUrl, {
-        enumIndex: i,
-        numColors,
-        scale,
-        enumResults: [...enumResults],
+      candidates.push({
+        index: i,
+        priority: getCandidatePriority(scale, numColors),
+        blob,
+        width: workWidth,
+        height: workHeight,
       });
-      break;
+    } else {
+      enumResults[i] = 'fail';
     }
 
-    await delay(50 / speedMultiplier);
+    reportProgress('Try Combinations', null, { enumIndex: i, numColors, scale });
+    await delay(50 / speed.value);
   }
 
-  stepIndex = BRUTE_FORCE_COMPLETE_STEP;
-  await delay(1000 / speedMultiplier);
+  // 排序是穩定的，同優先度時保留枚舉順序，與 bruteForceXProcess 一致
+  const selected = [...candidates].sort((a, b) => a.priority - b.priority)[0];
+
+  stepIndex = BRUTE_FORCE_SELECT_STEP;
+  await waitIfPaused(isPaused, signal);
+
+  if (!selected) {
+    reportProgress('Failed', null, { progress: 100 });
+    return {
+      success: false,
+      previewUrl: null,
+      width: baseWidth,
+      height: baseHeight,
+      sizeInMB: '0',
+      time: timer.ms,
+      method: 'brute-force',
+      steps,
+    };
+  }
+
+  const selectedCombination = {
+    enumIndex: selected.index,
+    numColors: COLOR_OPTIONS[selected.index % COLOR_OPTIONS.length],
+    scale: SCALE_OPTIONS[Math.floor(selected.index / COLOR_OPTIONS.length)],
+  };
+  const previewUrl = URL.createObjectURL(selected.blob);
+  reportProgress('Select Result', previewUrl, selectedCombination);
+  await delay(1000 / speed.value);
   throwIfAborted(signal);
 
+  stepIndex = BRUTE_FORCE_COMPLETE_STEP;
   steps.push({
     stepName: 'Complete',
     stepIndex: stepIndex,
-    processedPixels: foundPreviewUrl,
+    processedPixels: previewUrl,
     timestamp: Date.now() - startTime,
   });
-  // 完成時顯示實際選中的組合；沒有合格組合時 enumIndex = -1，不顯示組合文字
-  reportProgress('Complete', foundPreviewUrl, {
-    enumIndex: foundIndex,
-    ...(foundIndex >= 0 && {
-      numColors: COLOR_OPTIONS[foundIndex % 5],
-      scale: SCALE_OPTIONS[Math.floor(foundIndex / 5)],
-    }),
-    progress: 100,
-  });
+  reportProgress('Complete', previewUrl, { ...selectedCombination, progress: 100 });
 
   return {
     success: true,
-    previewUrl: foundPreviewUrl,
-    width: foundWidth,
-    height: foundHeight,
-    sizeInMB: foundSizeMB,
-    time: Date.now() - startTime,
+    previewUrl,
+    width: selected.width,
+    height: selected.height,
+    sizeInMB: (selected.blob.size / (1024 * 1024)).toFixed(2),
+    time: timer.ms,
     method: 'brute-force',
     steps,
   };
