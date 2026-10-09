@@ -137,7 +137,7 @@ function ProcessingPanel({
           </div>
           {progress && progress.enumIndex >= 0 && (
             <div className="text-center mt-2 md:mt-3 text-xs sm:text-sm md:text-base text-secondary font-medium">
-              Trying: scale={progress.scale.toFixed(1)}, colors={progress.numColors}
+              {progress.stepName === 'Complete' ? 'Selected' : 'Trying'}: scale={progress.scale.toFixed(1)}, colors={progress.numColors}
             </div>
           )}
         </div>
@@ -233,7 +233,21 @@ export function AlgorithmDemo() {
     isPausedRef.current.value = isPaused;
   }, [isPaused]);
 
+  const abortProcessing = useCallback(() => {
+    processingRef.current.analytical?.abort();
+    processingRef.current.bruteForce?.abort();
+    processingRef.current = { analytical: null, bruteForce: null };
+  }, []);
+
+  useEffect(() => abortProcessing, [abortProcessing]);
+
   const handleSelectImage = useCallback(async (imagePath: string) => {
+    abortProcessing();
+
+    const analyticalAbort = new AbortController();
+    const bruteForceAbort = new AbortController();
+    processingRef.current = { analytical: analyticalAbort, bruteForce: bruteForceAbort };
+
     setSelectedImage(imagePath);
     setIsPlaying(true);
     setIsComplete(false);
@@ -245,55 +259,46 @@ export function AlgorithmDemo() {
 
     const fullPath = imagePath;
     const imageData = await loadImageUrl(fullPath);
+    if (analyticalAbort.signal.aborted) return;
     setOriginalImageUrl(imageData.dataUrl);
 
     isPausedRef.current.value = false;
 
-    const analyticalAbort = new AbortController();
-    const bruteForceAbort = new AbortController();
-    processingRef.current = { analytical: analyticalAbort, bruteForce: bruteForceAbort };
-
     const analyticalPromise = processImageAnalyticalWithProgress(
       fullPath,
       (progress) => {
-        setAnalyticalProgress({ ...progress });
+        if (!analyticalAbort.signal.aborted) setAnalyticalProgress({ ...progress });
       },
       isPausedRef.current,
-      speedRef.current
+      speedRef.current,
+      analyticalAbort.signal
     );
 
     const bruteForcePromise = processImageBruteForceWithProgress(
       fullPath,
       (progress) => {
-        setBruteForceProgress({ ...progress });
+        if (!bruteForceAbort.signal.aborted) setBruteForceProgress({ ...progress });
       },
       isPausedRef.current,
-      speedRef.current
+      speedRef.current,
+      bruteForceAbort.signal
     );
 
     Promise.all([analyticalPromise, bruteForcePromise]).then(([analyticalRes, bruteForceRes]) => {
+      if (analyticalAbort.signal.aborted || bruteForceAbort.signal.aborted) return;
       setAnalyticalResult(analyticalRes);
       setBruteForceResult(bruteForceRes);
       setIsComplete(true);
       setIsPlaying(false);
     }).catch((error) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('Processing error:', error);
       setIsPlaying(false);
     });
-
-    return () => {
-      analyticalAbort.abort();
-      bruteForceAbort.abort();
-    };
-  }, []);
+  }, [abortProcessing]);
 
   const handleReset = useCallback(() => {
-    if (processingRef.current.analytical) {
-      processingRef.current.analytical.abort();
-    }
-    if (processingRef.current.bruteForce) {
-      processingRef.current.bruteForce.abort();
-    }
+    abortProcessing();
     setSelectedImage(null);
     setOriginalImageUrl(null);
     setIsPlaying(false);
@@ -303,7 +308,7 @@ export function AlgorithmDemo() {
     setBruteForceProgress(null);
     setAnalyticalResult(null);
     setBruteForceResult(null);
-  }, []);
+  }, [abortProcessing]);
 
   const handleTogglePause = useCallback(() => {
     setIsPaused(prev => !prev);

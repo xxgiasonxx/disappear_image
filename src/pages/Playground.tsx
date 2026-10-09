@@ -8,20 +8,23 @@ type AlgorithmType = 'analytical' | 'brute-force';
 export function Playground() {
   const [algorithm, setAlgorithm] = useState<AlgorithmType>('analytical');
   
-  const { status, result, error, processImage, reset } = useXProcessor();
+  const analytical = useXProcessor();
   const bruteForce = useBruteForceProcessor();
-  
+  const active = algorithm === 'brute-force' ? bruteForce : analytical;
+
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [originalName, setOriginalName] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const activeStatus = algorithm === 'brute-force' ? bruteForce.status : status;
-  const activeResult = algorithm === 'brute-force' ? bruteForce.result : result;
-  const activeError = algorithm === 'brute-force' ? bruteForce.error : error;
-  const activeProcessImage = algorithm === 'brute-force' ? bruteForce.processImage : processImage;
-  const activeReset = algorithm === 'brute-force' ? bruteForce.reset : reset;
+  const activeStatus = active.status;
+  const activeResult = active.result;
+  const activeError = active.error;
+  const activeProcessImage = active.processImage;
+  const resetAnalytical = analytical.reset;
+  const resetBruteForce = bruteForce.reset;
 
   const handleFile = useCallback(async (file: File) => {
     const validationError = validateImageFile(file);
@@ -32,12 +35,26 @@ export function Playground() {
 
     setProcessingError(null);
     setOriginalName(file.name);
+    setCurrentFile(file);
 
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
 
+    // 清掉兩種演算法上一張圖的結果，避免切換演算法時顯示舊圖
+    resetAnalytical();
+    resetBruteForce();
     await activeProcessImage(file);
-  }, [activeProcessImage]);
+  }, [activeProcessImage, resetAnalytical, resetBruteForce]);
+
+  const handleSelectAlgorithm = useCallback((next: AlgorithmType) => {
+    setAlgorithm(next);
+
+    // 已上傳圖片但新演算法還沒處理過時，直接用同一張圖處理
+    const target = next === 'brute-force' ? bruteForce : analytical;
+    if (currentFile && target.status === 'idle') {
+      target.processImage(currentFile);
+    }
+  }, [analytical, bruteForce, currentFile]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -75,15 +92,17 @@ export function Playground() {
   }, [activeResult, originalName, algorithm]);
 
   const handleReset = useCallback(() => {
-    activeReset();
+    resetAnalytical();
+    resetBruteForce();
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setCurrentFile(null);
     setPreviewUrl(null);
     setOriginalName('');
     setProcessingError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [activeReset, previewUrl]);
+  }, [resetAnalytical, resetBruteForce, previewUrl]);
 
   return (
     <div className="min-h-screen p-4 sm:p-6 md:p-8">
@@ -178,7 +197,7 @@ export function Playground() {
                       ? 'bg-primary text-primary-content'
                       : 'bg-base-300 text-base-content hover:bg-base-100'
                   }`}
-                  onClick={() => setAlgorithm('analytical')}
+                  onClick={() => handleSelectAlgorithm('analytical')}
                 >
                   優化解 (Analytical)
                   <span className="block text-xs mt-1 opacity-75">快速</span>
@@ -189,14 +208,14 @@ export function Playground() {
                       ? 'bg-primary text-primary-content'
                       : 'bg-base-300 text-base-content hover:bg-base-100'
                   }`}
-                  onClick={() => setAlgorithm('brute-force')}
+                  onClick={() => handleSelectAlgorithm('brute-force')}
                 >
                   暴力解 (Brute Force)
                   <span className="block text-xs mt-1 opacity-75">完整搜索</span>
                 </button>
               </div>
               <p className="mt-3 text-sm text-base-content/60">
-                暴力解會嘗試所有 40 種 (8 scale × 5 colors) 參數組合，確保找到最優解
+                暴力解會嘗試所有 40 種 (8 scale × 5 colors) 參數組合，再依與優化解相同的優先順序挑選，結果通常一致
               </p>
             </div>
           </div>
@@ -298,7 +317,7 @@ export function Playground() {
                     </p>
                     <p>
                       <strong className="text-primary">原圖效果：</strong>
-                      點擊放大後，由於取樣點剛好落在原圖像素上，可以正常顯示
+                      點開原圖後，每個不透明像素都完整顯示，交錯的色點會拼成完整圖片
                     </p>
                   </div>
                 </div>

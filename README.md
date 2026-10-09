@@ -4,7 +4,7 @@
 
 一個探索「Alpha 通道隱寫術」(Alpha Channel Steganography) 的互動式網站，利用 PNG 透明度與社群平台縮圖的特性，達成預覽圖與原始圖的資訊落差。
 
-![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite)
+![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite)
 ![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-3.4-06B6D4?logo=tailwindcss)
@@ -78,7 +78,7 @@ $$C_{display} = \alpha \cdot C_{pixel} + (1 - \alpha) \cdot C_{bg}$$
 
 ### 技術棧
 
-- **前端框架**: React 18+ with TypeScript (strict mode)
+- **前端框架**: React 19 with TypeScript (strict mode)
 - **建構工具**: Vite
 - **圖片處理**: 原生 Canvas API + UPNG.js
 - **樣式**: Tailwind CSS + daisyUI (Nord 暗色主題)

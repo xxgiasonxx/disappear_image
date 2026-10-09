@@ -188,7 +188,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ### 4.2 專案技術棧
 
-- **前端框架**: React 18+ with TypeScript (strict mode)
+- **前端框架**: React 19 with TypeScript (strict mode)
 - **建構工具**: Vite
 - **圖片處理**: 原生 Canvas API + UPNG.js (PNG 編碼)
 - **狀態管理**: React useState + 自訂 Hooks

@@ -4,7 +4,7 @@
 
 一個探索「Alpha 通道隱寫術」(Alpha Channel Steganography) 的互動式網站，利用 PNG 透明度與社群平台縮圖的特性，達成預覽圖與原始圖的資訊落差。
 
-[![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite)](https://vitejs.dev)
+[![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite)](https://vitejs.dev)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript)](https://www.typescriptlang.org)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-3.4-06B6D4?logo=tailwindcss)](https://tailwindcss.com)

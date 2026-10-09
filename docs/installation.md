@@ -55,7 +55,7 @@ npm run build
 ## 技術棧
 
 - **前端框架**: React 19.2 with TypeScript (strict mode)
-- **建構工具**: Vite 6.0
+- **建構工具**: Vite 8.0
 - **圖片處理**: 原生 Canvas API + UPNG.js
 - **樣式**: Tailwind CSS v3 + daisyUI v4
 - **動畫**: Framer Motion v12

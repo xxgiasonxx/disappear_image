@@ -38,7 +38,7 @@ const ANALYTICAL_STEPS: Step[] = [
     description: '用 canvas 將過小的圖放大到至少 1000px。',
     details: [
       '保證棋盤格化後肉眼看起來夠細緻',
-      '使用雙線性插值進行平滑放大',
+      '使用 Canvas 高品質平滑（imageSmoothingQuality: high）放大，實際插值方式由瀏覽器決定',
     ],
   },
   {
@@ -92,7 +92,7 @@ const COMPARISON = [
   },
   {
     title: '計算成本',
-    description: '優化解最好情況只跑 1 次，最差約 12 次。暴力解固定跑滿 40 次。',
+    description: '優化解最好情況只跑 1 次，最差 11 次。暴力解固定跑滿 40 次。',
     type: 'warning' as const,
   },
   {
