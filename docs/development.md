@@ -48,12 +48,12 @@ function calc(): number // ❌ 過於精簡
 
 ```typescript
 // ✅ 正確
-import { hideImageAnalytical } from '@lib/steganography';
-import { PixelBackground } from '@components/PixelBackground/PixelBackground';
+import { processImageForX } from '@lib/xProcessor';
+import { Navigation } from '@components/Navigation/Navigation';
 
 // ❌ 錯誤
-import { hideImageAnalytical } from '../lib/steganography';
-import { PixelBackground } from '../components/PixelBackground';
+import { processImageForX } from '../lib/xProcessor';
+import { Navigation } from '../components/Navigation';
 ```
 
 ---
@@ -138,7 +138,7 @@ const sanitizedInput = escapeHtml(userInput);
 ### 測試覆蓋範圍
 
 - 所有公開 API 函式都應有單元測試
-- 核心演算法（插值、隱寫術）需要完整測試
+- 核心演算法（色彩量化、棋盤格化、參數搜尋）需要完整測試
 - 邊界條件和錯誤處理需要測試
 
 ### 執行測試

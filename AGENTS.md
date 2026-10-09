@@ -65,7 +65,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 「我看得到你，但我看不見你。」
 
-本專案使用 React + TypeScript 構建前端網站，探索數位影像處理中的「抗重採樣隱寫術」(Anti-Downsampling Steganography)，利用社群平台縮圖演算法的漏洞，達成預覽圖與原始圖的資訊落差。
+本專案使用 React + TypeScript 構建前端網站，探索數位影像處理中的「Alpha 通道隱寫術」(Alpha Channel Steganography)，利用 PNG 透明度與社群平台縮圖的特性，達成預覽圖與原始圖的資訊落差。
 
 ---
 
@@ -82,16 +82,16 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ### 1.2 研究目的
 
 - 研究各大社群平台縮圖機制
-- 嘗試開發一種基於「縮放陷阱（Rescaling Trap）」技術的圖像編碼演算法
-- 讓目標圖像（Secret Image）能夠在經歷特定演算法縮放後，精準消失在縮圖當中
-- 實現一種具備「魯棒性」的縮放技術，使其能抵抗社群平台的自動化壓縮流程
+- 開發一種基於 Alpha 通道的圖像編碼演算法：透明與不透明像素以西洋棋盤交錯排列
+- 讓圖片在原尺寸下完整呈現，經過平台縮圖後被背景色沖淡、消失在預覽圖中
+- 將輸出控制在平台的檔案大小限制內（X 為 1MB），避免被再壓縮而失去透明度
 - 讓大家都可以使用網站馬上使用，並理解社群平台背後的優化方案
 
 ---
 
 ## 二、縮放演算法
 
-要理解「縮放陷阱」的核心機制，必須先深入了解縮放演算法的數學本質。當社群平台將圖片從 2000×2000 縮小到 500×500 時，它並非隨機丟棄像素，而是透過一個卷積核（Kernel）對原圖進行加權平均。
+要理解棋盤格 PNG 為什麼在縮圖後會被沖淡，必須先了解縮放演算法的數學本質。當社群平台將圖片從 2000×2000 縮小到 500×500 時，它並非隨機丟棄像素，而是透過一個卷積核（Kernel）對原圖進行加權平均。
 
 ### 2.1 最近鄰插值（Nearest Neighbor Interpolation）
 
@@ -101,7 +101,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - 採樣點：每個輸出像素僅對應 1 個原圖像素（1×1 感受野）
 - 計算複雜度：O(W' × H')，最低
 - 適用場景：常用在放大，縮小反而很少因為表現糟糕，對畫素藝術（Pixel Art）或對運算效能要求極高的即時預覽
-- 縮放陷阱可利用性：**極高**（採樣點完全確定性，可精準控制）
 - 優點：運算極快，不改變原始色彩
 - 缺點：會產生明顯的「馬賽克」效應，縮圖後邊緣會有明顯的鋸齒狀（Aliasing），影像顯得粗糙
 
@@ -112,7 +111,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **特性分析：**
 - 感受野：2×2（4 個像素參與計算）
 - 計算複雜度：O(W' × H' × 4)，線性
-- 縮放陷阱可利用性：**高**（加權係數可預測，允許逆向設計）
 - 適用場景：一般網頁縮圖、影片即時縮放
 - 優點：處理後的過渡比最近鄰平滑，速度適中
 - 缺點：縮圖後影像會顯得有些模糊，且容易遺失細小的高頻細節
@@ -124,7 +122,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **特性分析：**
 - 感受野：4×4（16 個像素參與計算）
 - 計算複雜度：O(W' × H' × 16)
-- 縮放陷阱可利用性：**中**（係數複雜但完全確定，可利用逆向最佳化）
 - 優點：比雙線性更加精細，能夠保留更好的邊緣銳利度與細節
 - 缺點：計算量明顯增加；在強烈對比的邊緣可能會產生「光暈」現象
 
@@ -147,9 +144,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 | 數學本質 | 直接映射 | 線性加權 | 三次多項式 | Sinc 函數加窗 |
 | 計算複雜度 | O(N) | O(4N) | O(16N) | O(16N) ~ O(36N) |
 | 圖像品質 | 低（馬賽克） | 中（平滑） | 高（銳利） | 極高（細節最完整） |
-| 縮放陷阱利用難度 | 易（確定性最高） | 中（線性係數） | 難（多項式係數） | 難（振盪函數係數） |
 | 採樣點預測性 | 100% 確定 | 完全確定 | 完全確定 | 完全確定 |
-| 反向求解難度 | 極低 | 中 | 高 | 高 |
 
 ---
 
@@ -157,25 +152,24 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ### 3.1 問題形式化
 
-本研究將問題形式化為以下最佳化問題：
-
 **輸入：**
-- S：背景圖（Cover Image），解析度 W×H，如 2000×2000
-- T：目標圖（Secret Image），解析度 W'×H'，如 500×500
-- f：縮放函數，以特定插值核 K 定義
+- S：使用者上傳的原始圖片
 
 **輸出：**
-- A：攻擊圖（Attack Image），解析度同 S（2000×2000）
+- A：RGBA PNG，(x+y) 偶數格保留 S 的（量化後）色彩、alpha=255；(x+y) 奇數格完全透明、alpha=0
+- 限制：A 的檔案大小 ≤ 1MB
+
+**目標：** 在符合大小限制的前提下，盡可能保留最多的顏色數與最高的解析度。
 
 ### 3.2 核心問題
 
-**問題 1：利用確定性採樣漏洞**
+**問題 1：透明像素與縮圖的交互作用**
 
-主流縮放演算法（Bilinear, Bicubic）的採樣點和加權係數是可能可預測的，對於給定的縮放比例，每個輸出像素對應哪些輸入像素、各自的權重為何，均可事先精準計算。本研究將利用這個「確定性採樣漏洞」，透過反向設計像素排布，將「顯現」轉化為「消失」。
+顯示 PNG 時，像素依 $C_{display} = \alpha \cdot C_{pixel} + (1 - \alpha) \cdot C_{bg}$ 與背景合成。平台縮圖時會把相鄰像素平均，透明像素帶入背景色，使預覽圖被沖淡；原尺寸檢視時不透明像素則完整呈現。
 
-**問題 2：社群平台自動壓縮的規避**
+**問題 2：社群平台再壓縮的規避**
 
-社群平台通常會對上傳圖像施加 JPEG 壓縮（品質係數 70-85），JPEG 的 8×8 DCT 區塊壓縮會引入量化誤差，進一步破壞精心設計的像素排布。本研究透過在優化過程中加入 JPEG 壓縮模擬層，強迫演算法學習對壓縮具有魯棒性的像素排布策略。
+平台會把過大的圖片再壓縮成 JPEG，JPEG 沒有 Alpha 通道，棋盤格效果會因此失效。本研究透過 Median-cut 色彩量化與棋盤格化（一半像素完全相同）大幅降低 PNG 檔案大小，讓輸出維持在 1MB 以內。
 
 ---
 
@@ -196,8 +190,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 - **前端框架**: React 18+ with TypeScript (strict mode)
 - **建構工具**: Vite
-- **圖片處理**: 原生 Canvas API + Web Workers (避免阻塞主執行緒)
-- **狀態管理**: React Context + useReducer (或 Zustand)
+- **圖片處理**: 原生 Canvas API + UPNG.js (PNG 編碼)
+- **狀態管理**: React useState + 自訂 Hooks
 - **樣式**: Tailwind CSS + daisyUI (自訂暗色主題)
 - **部署**: 靜態網站托管
 
@@ -229,46 +223,40 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 功能：
 - 使用者圖片上傳區域
-- 選擇目標平台的縮圖尺寸 (Discord, Line, X 等)
+- 選擇演算法：優化解 (Analytical) 或暴力解 (Brute Force)
 - 即時預覽處理結果
 - 下載處理後的圖片
 
 ### 4.4 演算法實作規劃
 
+兩種方法共用同一條處理流程：放大到至少 1000px → Median-cut 色彩量化 → 棋盤格化 → upng-js 編碼 PNG → 檢查是否 ≤ 1MB。差別在於如何搜尋「顏色數 × 解析度」的參數組合。
+
 #### 1. 暴力搜尋法 (Brute Force Approach)
 
-- **邏輯**：遍歷高解析度圖片中的每一個像素點，在每一個點的 (0, 255) 範圍內進行迭代搜尋
-- **策略**：對於每個受縮放演算法影響的採樣區塊（例如 4×4 區塊縮放為 1×1 像素），暴力嘗試所有像素組合，直到縮放後的像素值與目標（黑或白）的誤差最小
-- **複雜度**：O(N · K^P)，其中 P 是每個區塊內的像素數。這在計算上是不可行的，因此實作時通常會退化為「局部貪婪搜尋」，這也是暴力解效率低下的主因
+- **邏輯**：窮舉 8 種 scale（1.0 ~ 0.3）× 5 種顏色數（32 ~ 2），共 40 種組合
+- **策略**：每種組合都完整跑一次流程，保留 ≤ 1MB 的候選，再依優先順序（先高解析度、再多顏色）挑選
+- **成本**：固定 40 次 PNG 編碼
 
-#### 2. 優化代數解 (Optimized Algorithmic Solution)
+#### 2. 優化解 (Analytical Approach)
 
-- **邏輯**：將縮放視為一個線性變換矩陣
-- **策略**：假設縮放運算為 W · x = y，其中 W 是權重卷積矩陣，x 是原始圖像向量，y 是目標圖像（全黑/全白），我們不需逐一嘗試，而是直接求解這個超定或欠定方程組
-- **演算法**：使用共軛梯度法 (Conjugate Gradient) 或最小二乘法 (Least Squares)，透過計算梯度 ∇f 快速找到讓 MSE 最小化的像素擺放方式
-- **複雜度**：O(k · N log N)（若使用 FFT 加速）或矩陣運算的線性時間，效能將遠超暴力解
+- **邏輯**：貪婪式、單一路徑搜尋，找到第一個合格組合就停
+- **策略**：原解析度下顏色數 32 → 16 → 8 → 4 → 2；仍太大才以 2 色每次縮小 10% 解析度，scale ≤ 0.3 時失敗
+- **成本**：最好 1 次、最差 11 次 PNG 編碼，結果與暴力解幾乎一致
 
 ### 4.5 效能評估指標
 
-#### 1. 目標達成精度
+#### 1. 檔案大小
 
-透過計算縮放後的圖片與空白底圖（全黑或全白）之間的透過像素點計算均方誤差（Mean Squared Error）：
-
-- **指標意義**：MSE 越趨近於 0，代表圖片縮放後「消失」得越徹底，成功轉化為底圖顏色
-- **對比實驗**：分別計算「暴力解」與「優化解」在相同迭代次數下的 MSE 下降曲線
+- 輸出必須 ≤ 1MB，才不會被 X 平台再壓縮
 
 #### 2. 計算效率
 
-- **時間複雜度**: 紀錄從原始圖生成攻擊圖所需的總時間（秒）
-- **收斂速度**: 達到目標 MSE 閾值（例如 MSE < 10）所需的迭代次數
-- **資源佔用**: 紀錄暴力解與優化解的記憶體峰值
+- **處理時間**：記錄兩種方法從上傳到輸出所需的毫秒數
+- **PNG 編碼次數**：優化解 1 ~ 11 次，暴力解固定 40 次
 
-#### 3. 視覺隱蔽性 (Visual Fidelity - PSNR/SSIM)
+#### 3. 畫質保留
 
-雖然目標是讓子圖變黑/白，但「原圖」必須看起來正常
-
-- **PSNR (峰值信噪比)**: 衡量原圖與修改後的攻擊圖之間的差異
-- **指標要求**：PSNR 通常需大於 30dB，肉眼才難以察覺異常像素的擺放
+- **顏色數與縮放比例**：在符合大小限制下，顏色數越多、解析度越高，原尺寸檢視的畫質越好
 
 ---
 
@@ -276,9 +264,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ### 5.1 技術成果
 
-- 一個能在各種主流縮放演算法上運作的縮放陷阱生成器
-- 完整的損失函數設計調整指南
-- JPEG 壓縮（品質 70）下，縮放後目標圖仍可識別（PSNR 通常需大於 30dB）
+- 一個能產生西洋棋盤 Alpha PNG 的網頁工具，輸出符合 X 平台 1MB 限制
+- 優化解與暴力解的參數搜尋比較與視覺化演示
 
 ### 5.2 實用價值
 
@@ -504,21 +491,21 @@ src/
 │   ├── Navigation/      # 導航元件
 │   └── FloatingButtons/ # 主題切換 + 回到頂部
 ├── lib/                 # 演算法核心函式庫
-│   ├── types.ts         # 類型定義與常數
-│   ├── interpolation.ts # 插值演算法 (kernel functions)
-│   ├── steganography.ts # 隱寫術演算法
-│   ├── xProcessor.ts    # X 平台圖片處理
-│   ├── bruteForce.ts    # 暴力搜尋法
-│   ├── analytical.ts    # 解析法
-│   ├── imageUtils.ts    # 影像工具函式
-│   ├── bruteForceXProcessor.ts
-│   └── animatedXProcessor.ts
+│   ├── xProcessor.ts           # 西洋棋盤 PNG 主流程（優化解）
+│   ├── bruteForceXProcessor.ts # 西洋棋盤 PNG 暴力解
+│   ├── animatedXProcessor.ts   # 演算法演示用的逐步處理器
+│   ├── imageUtils.ts           # 影像工具函式
+│   ├── types.ts                # 類型定義
+│   ├── steganography.ts        # 舊版縮放隱寫實驗（網站未使用）
+│   ├── analytical.ts           # 舊版縮放隱寫實驗（網站未使用）
+│   ├── bruteForce.ts           # 舊版縮放隱寫實驗（網站未使用）
+│   └── interpolation.ts        # 舊版縮放隱寫實驗（網站未使用）
 ├── pages/               # 頁面元件
 │   ├── Comparison.tsx
 │   ├── AlgorithmDemo.tsx
 │   ├── Explanation.tsx
 │   └── Playground.tsx
-├── workers/             # Web Workers (圖片處理)
+├── workers/             # Web Workers（網站未使用）
 │   └── imageProcessor.worker.ts
 ├── hooks/               # React hooks
 │   ├── useXProcessor.ts
@@ -544,16 +531,16 @@ src/
 
 **正確範例：**
 ```typescript
-import { hideImageAnalytical } from '@lib/steganography';
-import { PLATFORM_CONFIGS } from '@lib/types';
+import { processImageForX } from '@lib/xProcessor';
+import { validateImageFile } from '@lib/imageUtils';
 import { Navigation } from '@components/Navigation/Navigation';
 import { Comparison } from '@pages/Comparison';
 ```
 
 **錯誤範例：**
 ```typescript
-import { hideImageAnalytical } from '../lib/steganography';      // ❌
-import { PLATFORM_CONFIGS } from '../../lib/types';             // ❌
+import { processImageForX } from '../lib/xProcessor';            // ❌
+import { validateImageFile } from '../../lib/imageUtils';       // ❌
 import { Navigation } from '../components/Navigation';           // ❌
 ```
 
@@ -561,47 +548,43 @@ import { Navigation } from '../components/Navigation';           // ❌
 
 ## 專案簡介
 
-當你將一張高解析度圖片上傳到 Discord、Line 或 X 時，平台為了節省頻寬，會使用特定的插值演算法（Interpolation Algorithms）將圖片下採樣（Downsampling）。本專案實作了一種像素級的視覺魔術：我們在原始圖片中植入特定的高頻訊號（High-frequency signals），這些訊號在原始尺寸下清晰可見，但在經過縮放演算法的「平均化」處理後，會完美的與背景融為一體，從預覽圖中徹底消失。
+當你把圖片上傳到 X 時，平台會產生較小的預覽縮圖。本專案實作了一種像素級的視覺魔術：把圖片轉成西洋棋盤狀的半透明 PNG，一半像素保留色彩、一半完全透明。原尺寸檢視時，不透明像素拼出完整圖片；縮圖時透明像素帶入背景色被平均進來，預覽圖被沖淡、與背景融為一體。
 
 ---
 
-## 核心演算法：高頻訊息隱匿 (HF Information Hiding)
+## 核心演算法：Alpha 通道隱寫術 (Alpha Channel Steganography)
 
-影像縮放本質上是像素的重新採樣。常用的演算法如雙線性插值 (Bilinear) 或 雙三次插值 (Bicubic) 會根據權重計算鄰近像素的平均值。我們利用數學公式逆向推導：
+顯示 PNG 時，每個像素依 Alpha 值與背景色合成：
 
-$$P_{dst} = \sum_{i=1}^{n} w_i \cdot P_{src,i}$$
+$$C_{display} = \alpha \cdot C_{pixel} + (1 - \alpha) \cdot C_{bg}$$
 
-其中 $P_{dst}$ 是縮圖後的像素，$w_i$ 是演算法權重。我們透過調整 $P_{src}$ 的極微小差異，讓 $\sum w_i \cdot P_{src,i}$ 的結果趨近於背景色，使秘密訊息在低解析度下成為「統計誤差」。
+演算法流程：放大到至少 1000px → Median-cut 色彩量化 → 棋盤格化（(x+y) 偶數格 alpha=255、奇數格 alpha=0）→ upng-js 編碼 → 檢查 ≤ 1MB，太大就減少顏色數或縮小解析度後重試。
 
 ---
 
 ## 深度分析：暴力解 vs. 優化解
 
-| 維度 | 暴力模擬法 (Brute Force) | 逆向解析優化法 (Analytical Inverse) |
-|------|-------------------------|-------------------------------------|
-| 邏輯 | 不斷隨機生成像素排列，模擬縮放後對比結果 | 直接根據縮放比例與卷積核（Kernel）進行矩陣運算 |
-| 時間複雜度 | O(Iteration × N²)，極度耗時 | O(N²)，一次運算即可完成 |
-| 隱藏效果 | 邊緣會有明顯的噪點殘影，容易被察覺 | 能夠達到像素級的精準隱身，縮圖看起來完美無瑕 |
-| 適應性 | 換一個平台（縮放比例改變）就必須重新訓練 | 透過參數化公式，一秒切換不同平台的縮放模型 |
-| 結論 | 不切實際，僅能處理極小尺寸圖片 | 工程首選，適合處理 4K 以上高畫質影像 |
+| 維度 | 暴力解 (Brute Force) | 優化解 (Analytical) |
+|------|----------------------|---------------------|
+| 邏輯 | 窮舉 8 種 scale × 5 種顏色數，共 40 種組合 | 貪婪式：先減顏色數、再縮小解析度，找到就停 |
+| PNG 編碼次數 | 固定 40 次 | 1 ~ 11 次 |
+| 結果 | 依相同優先順序挑選，與優化解幾乎一致 | 第一個符合 1MB 的組合 |
+| 結論 | 用於展示完整搜尋過程 | 實際使用 |
 
 ---
 
 ## 技術挑戰 (The Hard Part)
 
-這不是簡單的畫畫，要達成「完美隱身」需要克服：
-
-- **插值演算法的多樣性**：不同平台使用的 Kernel 不同（Bilinear vs Lanczos），需要找到交集
-- **色彩空間壓縮**：JPEG 的破壞性壓縮（Lossy Compression）會改變像素值，我們必須在演算法中加入誤差補償
-- **極致效能要求**：處理千萬級像素的矩陣運算，需使用 Web Workers 確保 UI 順暢
+- **檔案大小限制**：X 平台 PNG 限制 1MB，需要透過色彩量化與棋盤格化壓低檔案大小
+- **畫質與大小的取捨**：顏色數越少、解析度越低，檔案越小但畫質越差
+- **透明度保留**：平台一旦轉成 JPEG，Alpha 通道就會消失，棋盤格效果也隨之失效
 
 ---
 
 ## 應用場景
 
 - **數位迷因創作**：在社群媒體上製作「點開有驚喜」的互動圖片
-- **脆弱浮水印 (Fragile Watermarking)**：用於檢測圖片是否被未經授權的縮放或裁切
-- **視覺藝術探索**：研究人類視覺系統對不同頻率訊號的感知邊界
+- **視覺藝術探索**：研究人眼如何把交錯的像素拼成完整影像
 
 ---
 

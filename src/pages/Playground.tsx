@@ -88,7 +88,7 @@ export function Playground() {
   return (
     <div className="min-h-screen p-4 sm:p-6 md:p-8">
       <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-center mb-2 text-base-content">Playground</h1>
-      <p className="text-center text-base-content/60 mb-8">抗重採樣隱寫術實驗區</p>
+      <p className="text-center text-base-content/60 mb-8">Alpha 通道隱寫術實驗區</p>
 
       <div className="max-w-6xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

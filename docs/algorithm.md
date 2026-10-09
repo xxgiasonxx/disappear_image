@@ -1,33 +1,31 @@
 # 演算法詳解
 
-## 1. 核心原理
+## 1. 核心原理：Alpha 通道隱寫術
 
-影像縮放的本質是像素的重新採樣。當平台將高解析度圖片下採樣 (Downsampling) 時，會使用插值演算法計算目標像素的值。我們利用這個特性，在原始圖片中植入特定的高頻訊號，這些訊號在原始尺寸可見，但經過縮放後會與背景融為一體。
+PNG 的每個像素除了 R、G、B 之外還有一個 Alpha（透明度）通道。瀏覽器或 App 顯示圖片時，會把像素顏色與底下的背景色做 Alpha 合成：
 
-### 1.1 數學基礎
+$$C_{display} = \alpha \cdot C_{pixel} + (1 - \alpha) \cdot C_{bg}$$
 
-設原始影像為 $I_{src}$，目標縮圖為 $I_{dst}$。縮放過程可表示為：
+- $\alpha = 1$（alpha=255）：完全顯示像素本身的顏色
+- $\alpha = 0$（alpha=0）：完全看不到像素，只看得到背景色
 
-$$I_{dst}(x, y) = \sum_{i=0}^{k-1} \sum_{j=0}^{k-1} w_{i,j} \cdot I_{src}(x \cdot s_x + i, y \cdot s_y + j)$$
+本專案把圖片做成「西洋棋盤」：一半像素保留色彩（alpha=255），另一半完全透明（alpha=0）。
 
-其中：
-- $s_x, s_y$ 為縮放比例
-- $k$ 為卷積核大小 (Kernel Size)
-- $w_{i,j}$ 為卷積核權重
+- **原尺寸檢視**：每個不透明像素都被完整顯示，人眼會把交錯的色點拼成完整的圖片。
+- **縮圖預覽**：平台縮圖時會把相鄰像素平均，透明像素帶進來的是背景色，縮圖顏色因此被往背景色拉近，看起來像被沖淡、模糊甚至消失。
 
-### 1.2 目標
+### 1.1 為什麼能塞進 1MB
 
-找到一組像素值 $P_{src}$，使得：
+X 平台對 PNG 有 1MB 的限制，超過就會被再壓縮。棋盤格化同時讓檔案大幅變小：
 
-$$\sum w_i \cdot P_{src,i} = P_{target}$$
-
-其中 $P_{target}$ 是目標像素值（通常為背景色 0 或 255）。
+- 一半像素都是同一個值 `[255, 255, 255, 0]`，PNG 的 Deflate 壓縮非常有效
+- 搭配色彩量化（最多 32 色），剩下的像素重複度也很高
 
 ---
 
 ## 2. 西洋棋盤 PNG 演算法
 
-將圖片轉換成「西洋棋盤狀」的半透明 PNG，繞過 X 平台的 1MB 圖片再壓縮限制。
+實作位於 `src/lib/xProcessor.ts`。
 
 ### 2.1 演算法流程
 
@@ -35,22 +33,22 @@ $$\sum w_i \cdot P_{src,i} = P_{target}$$
 Input: sourceImage
 Output: checkerboardPNG (≤ 1MB)
 
-1. 色彩量化（Median-cut）
-   → 將顏色數量減少到 32 色
+1. 圖片放大（Upscale）
+   → 長或寬小於 1000px 時，放大到至少 1000px
 
-2. 棋盤格化
+2. 色彩量化（Median-cut）
+   → 將顏色數量減少到 numColors 色（從 32 色開始）
+
+3. 棋盤格化
    → (x+y) 偶數格：保留色彩、alpha=255
    → (x+y) 奇數格：白色、alpha=0（完全透明）
 
-3. 圖片放大（Upscale）
-   → 確保長寬至少 1000px
-
 4. PNG 編碼
-   → 使用 upng-js 編碼
+   → 使用 upng-js 編碼（不再額外量化）
 
 5. 大小檢查
    → ≤ 1MB？成功
-   → > 1MB？減少顏色數或縮小解析度
+   → > 1MB？先減少顏色數，不行再縮小解析度，回到步驟 2
 ```
 
 ### 2.2 色彩量化（Median-cut）
@@ -126,146 +124,71 @@ function buildCheckerboard(
 }
 ```
 
----
+### 2.4 尺寸調整
 
-## 3. 插值核函式
-
-### 3.1 Bilinear (雙線性插值)
-
-$$B(x) = \max(0, 1 - |x|)$$
-
-- 感受野：2×2（4 個像素）
-- 速度快，但可能模糊或產生鋸齒
-
-### 3.2 Bicubic (雙三次插值) - Mitchell-Netravali
-
-$$B(x) = \begin{cases}
-(a+2)|x|^3 - (a+3)|x|^2 + 1 & \text{if } |x| < 1 \\
-a|x|^3 - 5a|x|^2 + 8a|x| - 4a & \text{if } 1 \leq |x| < 2 \\
-0 & \text{otherwise}
-\end{cases}$$
-
-其中 $a = -0.5$
-
-- 感受野：4×4（16 個像素）
-- 平衡速度與品質，常用於社群平台
-
-### 3.3 Lanczos (蘭佐斯重取樣)
-
-$$L(x) = \begin{cases}
-\frac{\sin(\pi x)}{\pi x} \cdot \frac{\sin(\pi x / a)}{\pi x / a} & \text{if } |x| < a \\
-0 & \text{otherwise}
-\end{cases}$$
-
-其中 $a = 3$ 或 $a = 4$
-
-- 感受野：4×4 或 6×6
-- 最高品質，運算較慢
-
-### 3.4 比較表
-
-| 項目 | 最近鄰 | 雙線性 | 雙三次 | 蘭佐斯 |
-|------|--------|--------|--------|--------|
-| 感受野大小 | 1×1 | 2×2 | 4×4 | 4×4 or 6×6 |
-| 參與計算像素數 | 1 | 4 | 16 | 16 或 36 |
-| 計算複雜度 | O(N) | O(4N) | O(16N) | O(16N) ~ O(36N) |
-| 圖像品質 | 低（馬賽克） | 中（平滑） | 高（銳利） | 極高（細節最完整） |
-| 縮放陷阱利用難度 | 易 | 中 | 難 | 難 |
+| 函式 | 用途 | 方法 |
+|------|------|------|
+| `upscaleImage` | 把過小的圖放大到至少 1000px，讓棋盤格夠細緻 | Canvas 高品質平滑縮放 |
+| `resizeImage` | 檔案仍超過 1MB 時，依 `scale` 縮小解析度 | 最近鄰取樣 |
 
 ---
 
-## 4. 隱寫術演算法 (Steganography)
+## 3. 參數搜尋：優化解 vs 暴力解
 
-### 4.1 解析法 (Analytical Method)
+兩種方法使用相同的棋盤格流程，差別在於如何找出符合 1MB 的「顏色數 × 解析度」組合。
 
-```typescript
-function hideImageAnalytical(
-  carrierPixels: Uint8ClampedArray,
-  carrierWidth: number,
-  carrierHeight: number,
-  secretPixels: Uint8ClampedArray,
-  secretWidth: number,
-  secretHeight: number,
-  backgroundColor: 'white' | 'black',
-  targetWidth: number,
-  targetHeight: number,
-  kernel: InterpolationKernel = 'bicubic',
-  strength: number = 0.8
-): HideImageResult
+### 3.1 優化解（Analytical / `processImageForX`）
+
+貪婪式、單一路徑搜尋，找到就停：
+
+```
+numColors = 32, scale = 1.0
+LOOP
+  量化 → 棋盤格化 → PNG 編碼
+  IF size ≤ 1MB THEN RETURN
+  IF numColors > 2 THEN numColors = numColors / 2      // 32 → 16 → 8 → 4 → 2
+  ELSE scale = scale - 0.1                               // 只用 2 色縮小解析度
+       IF scale ≤ 0.3 THEN RETURN 失敗
+END LOOP
 ```
 
-**流程：**
-1. 計算載體圖的縮圖
-2. 根據長寬比計算秘密圖在載體中的縮放比例和偏移量
-3. 對每個 target 像素：
-   - 讀取對應的秘密圖像素亮度 (avg > 128 為亮)
-   - 根據 `backgroundColor` 設定目標值
-   - 計算殘差並以 kernel 權重分佈到周圍像素
-4. 使用共軛梯度法求解線性系統
+最好情況只編碼 1 次，最差 11 次（scale=1.0 的 5 種顏色數 + scale 0.9~0.4 的 6 次）。
 
-### 4.2 暴力法 (Brute Force Method)
+### 3.2 暴力解（Brute Force / `bruteForceXProcess`）
 
-```typescript
-function hideImageBruteForce(
-  carrierPixels: Uint8ClampedArray,
-  carrierWidth: number,
-  carrierHeight: number,
-  secretPixels: Uint8ClampedArray,
-  secretWidth: number,
-  secretHeight: number,
-  backgroundColor: 'white' | 'black',
-  targetWidth: number,
-  targetHeight: number,
-  kernel: InterpolationKernel = 'bicubic'
-): HideImageResult
-```
+窮舉所有組合後再挑選：
 
-**流程：**
-1. 迭代優化：每次迭代隨機調整像素
-2. 調整方向：亮像素往正方向，暗像素往負方向
-3. 計算測試圖的縮圖與原始載體縮圖的差異
-4. 如果 score 變小，保留這次調整
+1. `scaleOptions = [1.0, 0.9, …, 0.3]`（8 個）× `colorOptions = [32, 16, 8, 4, 2]`（5 個），共 40 種組合
+2. 每種組合都完整跑一次：縮放 → 量化 → 棋盤格化 → PNG 編碼
+3. 只保留 ≤ 1MB 的候選
+4. 依 `originalOrderIndex` 排序後取第一個：
+   - `scale === 1.0`：依顏色數 32→2 給予索引 0~4
+   - `scale !== 1.0` 且 `numColors === 2`：索引為 `4 + round((1 - scale) * 10)`
+   - 其他組合：`Infinity`（排到最後）
+
+### 3.3 比較
+
+| 維度 | 優化解 | 暴力解 |
+|------|--------|--------|
+| 搜尋方式 | 貪婪式，找到第一個合格組合就停 | 窮舉 40 種組合後再排序挑選 |
+| PNG 編碼次數 | 1 ~ 11 次 | 固定 40 次 |
+| 選擇邏輯 | 先用原解析度試 32→2 色，不行才降解析度（只用 2 色） | 與優化解相同的優先順序，結果幾乎一致 |
+
+暴力解是用約 40 倍的運算量換取幾乎相同的結果，主要用於展示完整搜尋過程。
 
 ---
 
-## 5. 比較：暴力解 vs 優化解
+## 4. 評估指標
 
-| 維度 | 暴力模擬法 (Brute Force) | 逆向解析優化法 (Analytical Inverse) |
-|------|-------------------------|-------------------------------------|
-| 邏輯 | 不斷隨機生成像素排列，枚舉 40 種組合 | 直接根據縮放比例與卷積核進行矩陣運算 |
-| 時間複雜度 | O(40 × N)，固定枚舉 | O(N × M × maxIterations) |
-| 隱藏效果 | 邊緣會有明顯的噪點殘影 | 能夠達到像素級的精準隱身 |
-| 適應性 | 換一個平台就必須重新枚舉 | 透過參數化公式，一秒切換不同平台的縮放模型 |
-| 結論 | 適合展示完整搜索過程 | 工程首選，適合處理高畫質影像 |
+| 指標 | 說明 |
+|------|------|
+| 檔案大小 | 必須 ≤ 1MB，`sizeInMB` 回傳實際大小 |
+| 處理時間 | 兩種方法完成所需的毫秒數（演算法演示頁顯示） |
+| 顏色數 / 縮放比例 | 越高代表保留的畫質越好 |
 
 ---
 
-## 6. 效能評估指標
+## 5. 參考文獻
 
-### 6.1 MSE（均方誤差）
-
-$$MSE = \frac{1}{n} \sum_{i=1}^{n} (P_{avg,i} - P_{bg})^2$$
-
-- $P_{avg,i}$ 是縮圖後第 i 個像素的 RGB 平均值
-- $P_{bg}$ 是目標背景色（0 或 255）
-- MSE 越低，秘密消失越徹底
-
-### 6.2 處理時間
-
-- 記錄演算法執行所需的毫秒數
-- 代數法通常比暴力法快數十倍
-
-### 6.3 視覺品質（PSNR）
-
-$$PSNR = 10 \cdot \log_{10}\left(\frac{MAX^2}{MSE}\right)$$
-
-- MAX = 255（像素最大值）
-- PSNR > 30dB 表示視覺品質良好
-
----
-
-## 7. 參考文獻
-
-- Mitchell, D. P., & Netravali, A. N. (1988). Reconstruction filters in computer-graphics.
-- Keys, R. G. (1981). Cubic convolution interpolation for digital image processing.
-- Duchon, C. E. (1979). Lanczos filtering in one and two dimensions.
+- Heckbert, P. (1982). Color image quantization for frame buffer display.
+- Porter, T., & Duff, T. (1984). Compositing digital images.

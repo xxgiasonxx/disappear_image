@@ -60,7 +60,7 @@ npm run build
 - **樣式**: Tailwind CSS v3 + daisyUI v4
 - **動畫**: Framer Motion v12
 - **路由**: React Router v7
-- **狀態管理**: Zustand v5
+- **狀態管理**: React useState + 自訂 Hooks
 
 ## 依賴說明
 
@@ -122,4 +122,4 @@ npm run lint
 
 - 閱讀 [專案架構](structure.md) 了解程式碼組織
 - 閱讀 [演算法詳解](algorithm.md) 深入理解核心原理
-- 參考 [API 文档](api.md) 了解函式用法
+- 參考 [API 文件](api.md) 了解函式用法
